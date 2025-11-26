@@ -32,11 +32,11 @@ type ZAIChoice struct {
 
 // ZAIMessage represents message content from Z.AI.
 type ZAIMessage struct {
-	Content          string                `json:"content,omitempty"`
-	ReasoningContent string                `json:"reasoning_content,omitempty"`
-	Thinking         string                `json:"thinking,omitempty"`
-	Reasoning        []ReasoningStep       `json:"reasoning,omitempty"`
-	ContentBlocks    []ContentBlock        `json:"content_blocks,omitempty"`
+	Content          string           `json:"content,omitempty"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	Thinking         string           `json:"thinking,omitempty"`
+	Reasoning        []ReasoningStep  `json:"reasoning,omitempty"`
+	ContentBlocks    []ContentBlock   `json:"content_blocks,omitempty"`
 	ToolCalls        []state.ToolCall `json:"tool_calls,omitempty"`
 }
 

@@ -17,7 +17,7 @@ type ChatRequest struct {
 }
 
 type ThinkingOptions struct {
-	Type         string `json:"type"`               // "enabled" or "disabled" for Z.AI
+	Type         string `json:"type"` // "enabled" or "disabled" for Z.AI
 	BudgetTokens int    `json:"budget_tokens,omitempty"`
 }
 

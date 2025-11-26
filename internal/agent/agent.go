@@ -1691,7 +1691,9 @@ func (a *Agent) GetOrCreateWorkspaceContext(workspacePath string) (*WorkspaceCon
 	newTools = tooling.NewRegistry(allTools...)
 
 	// Set tool definitions in profile for compaction calculations
-	if setter, ok := workspaceProfile.(interface{ SetToolDefinitions([]tooling.ToolDefinition) }); ok {
+	if setter, ok := workspaceProfile.(interface {
+		SetToolDefinitions([]tooling.ToolDefinition)
+	}); ok {
 		setter.SetToolDefinitions(newTools.Definitions())
 	}
 

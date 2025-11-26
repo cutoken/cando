@@ -70,15 +70,15 @@ func TestConfigValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create valid base config
 			cfg := Config{
-				ContextMessagePercent:  0.02,
-				ContextTotalPercent:    0.50,
-				ContextProtectRecent:   5,
-				Temperature:            0.7,
-				RequestTimeoutSeconds:  90,
-				ShellTimeoutSeconds:    60,
-				MemoryStorePath:        "/tmp/memory.db",
-				HistoryPath:            "/tmp/.history",
-				SummaryModel:           "glm-4.5-air",
+				ContextMessagePercent: 0.02,
+				ContextTotalPercent:   0.50,
+				ContextProtectRecent:  5,
+				Temperature:           0.7,
+				RequestTimeoutSeconds: 90,
+				ShellTimeoutSeconds:   60,
+				MemoryStorePath:       "/tmp/memory.db",
+				HistoryPath:           "/tmp/.history",
+				SummaryModel:          "glm-4.5-air",
 			}
 
 			// Apply test-specific modifications

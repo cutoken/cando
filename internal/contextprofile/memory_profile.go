@@ -806,4 +806,3 @@ func removeEmptyMessages(messages []state.Message) []state.Message {
 	}
 	return filtered
 }
-

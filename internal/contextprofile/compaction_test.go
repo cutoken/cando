@@ -43,8 +43,8 @@ func TestCompactionWithRealSession(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.Config{
 		MemoryStorePath:       filepath.Join(t.TempDir(), "test_memory.db"),
-		ContextMessagePercent: 0.02,  // 2%
-		ContextTotalPercent:   0.25,  // 25%
+		ContextMessagePercent: 0.02, // 2%
+		ContextTotalPercent:   0.25, // 25%
 		ContextProtectRecent:  2,
 	}
 
