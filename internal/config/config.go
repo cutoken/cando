@@ -64,9 +64,10 @@ func EnsureDefaultConfig(provider string) error {
 	configDir := GetConfigDir()
 	configPath := filepath.Join(configDir, "config.yaml")
 
-	// If config already exists, nothing to do
+	// If config already exists, ensure all providers have defaults
 	if _, err := os.Stat(configPath); err == nil {
-		return nil
+		// Config exists, but might be missing some provider defaults
+		return EnsureAllProviderDefaults(configPath)
 	}
 
 	// Create .cando directory if needed
@@ -79,33 +80,41 @@ func EnsureDefaultConfig(provider string) error {
 	case "zai":
 		cfg.Model = DefaultZAIModel
 		cfg.ProviderModels = map[string]string{
-			"zai": DefaultZAIModel,
+			"zai":        DefaultZAIModel,
+			"openrouter": DefaultOpenRouterModel,
+			"mock":       DefaultMockModel,
 		}
 		cfg.SummaryModel = DefaultZAISummaryModel
 		cfg.ProviderSummaryModels = map[string]string{
 			"zai":        DefaultZAISummaryModel,
 			"openrouter": DefaultOpenRouterSummaryModel,
+			"mock":       DefaultMockSummaryModel,
 		}
 		cfg.VLModel = DefaultZAIVLModel
 		cfg.ProviderVLModels = map[string]string{
 			"zai":        DefaultZAIVLModel,
 			"openrouter": DefaultOpenRouterVLModel,
+			"mock":       DefaultMockVLModel,
 		}
 		cfg.ZAIBaseURL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 	case "openrouter":
 		cfg.Model = DefaultOpenRouterModel
 		cfg.ProviderModels = map[string]string{
+			"zai":        DefaultZAIModel,
 			"openrouter": DefaultOpenRouterModel,
+			"mock":       DefaultMockModel,
 		}
 		cfg.SummaryModel = DefaultOpenRouterSummaryModel
 		cfg.ProviderSummaryModels = map[string]string{
 			"zai":        DefaultZAISummaryModel,
 			"openrouter": DefaultOpenRouterSummaryModel,
+			"mock":       DefaultMockSummaryModel,
 		}
 		cfg.VLModel = DefaultOpenRouterVLModel
 		cfg.ProviderVLModels = map[string]string{
 			"zai":        DefaultZAIVLModel,
 			"openrouter": DefaultOpenRouterVLModel,
+			"mock":       DefaultMockVLModel,
 		}
 	default:
 		// Use general defaults
@@ -132,6 +141,84 @@ func EnsureDefaultConfig(provider string) error {
 
 	if err := os.WriteFile(configPath, data, 0644); err != nil {
 		return fmt.Errorf("write config: %w", err)
+	}
+
+	return nil
+}
+
+// EnsureAllProviderDefaults ensures all provider maps have default values for all known providers
+func EnsureAllProviderDefaults(configPath string) error {
+	// Load existing config
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("unmarshal config: %w", err)
+	}
+
+	// Initialize maps if nil
+	if cfg.ProviderModels == nil {
+		cfg.ProviderModels = make(map[string]string)
+	}
+	if cfg.ProviderSummaryModels == nil {
+		cfg.ProviderSummaryModels = make(map[string]string)
+	}
+	if cfg.ProviderVLModels == nil {
+		cfg.ProviderVLModels = make(map[string]string)
+	}
+
+	// Ensure all providers have defaults in all maps
+	knownProviders := []string{"zai", "openrouter", "mock"}
+	
+	for _, provider := range knownProviders {
+		// Main models
+		if cfg.ProviderModels[provider] == "" {
+			switch provider {
+			case "zai":
+				cfg.ProviderModels[provider] = DefaultZAIModel
+			case "openrouter":
+				cfg.ProviderModels[provider] = DefaultOpenRouterModel
+			case "mock":
+				cfg.ProviderModels[provider] = DefaultMockModel
+			}
+		}
+
+		// Summary models
+		if cfg.ProviderSummaryModels[provider] == "" {
+			switch provider {
+			case "zai":
+				cfg.ProviderSummaryModels[provider] = DefaultZAISummaryModel
+			case "openrouter":
+				cfg.ProviderSummaryModels[provider] = DefaultOpenRouterSummaryModel
+			case "mock":
+				cfg.ProviderSummaryModels[provider] = DefaultMockSummaryModel
+			}
+		}
+
+		// VL models
+		if cfg.ProviderVLModels[provider] == "" {
+			switch provider {
+			case "zai":
+				cfg.ProviderVLModels[provider] = DefaultZAIVLModel
+			case "openrouter":
+				cfg.ProviderVLModels[provider] = DefaultOpenRouterVLModel
+			case "mock":
+				cfg.ProviderVLModels[provider] = DefaultMockVLModel
+			}
+		}
+	}
+
+	// Write back the updated config
+	updatedData, err := yaml.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("marshal updated config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, updatedData, 0644); err != nil {
+		return fmt.Errorf("write updated config: %w", err)
 	}
 
 	return nil
