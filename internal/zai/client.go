@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"cando/internal/llm"
+	"cando/internal/logging"
 	"cando/internal/state"
 )
 
@@ -173,10 +174,13 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 	}
 
 	c.logger.Printf("[z.ai] sending %d messages to model %s", len(reqPayload.Messages), reqPayload.Model)
+	logging.DevLog("z.ai: sending request to %s with %d messages", reqPayload.Model, len(reqPayload.Messages))
 	if reqPayload.Thinking != nil {
-		c.logger.Printf("[z.ai DEBUG] Request has thinking=%+v", reqPayload.Thinking)
+		c.logger.Printf("[z.ai] Request has thinking=%+v", reqPayload.Thinking)
+		logging.DevLog("z.ai: thinking enabled with budget=%d", reqPayload.Thinking.BudgetTokens)
 	} else {
-		c.logger.Printf("[z.ai DEBUG] Request has thinking=nil")
+		c.logger.Printf("[z.ai] Request has thinking=nil")
+		logging.DevLog("z.ai: thinking disabled")
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -190,22 +194,27 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 		return respPayload, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode >= 300 {
+		logging.ErrorLog("z.ai API error: %d - %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 		return respPayload, fmt.Errorf("api error: %s", strings.TrimSpace(string(respBody)))
 	}
 
 	// Try to parse as Z.AI enhanced response first
 	var zaiResp ZAIResponse
 	if err := json.Unmarshal(respBody, &zaiResp); err == nil && len(zaiResp.Choices) > 0 {
-		// Debug: Log what fields are present in the response
+		// Log what fields are present in the response
 		msg := zaiResp.Choices[0].Message
-		c.logger.Printf("[z.ai DEBUG] Response has: reasoning_content=%v thinking=%v content_blocks=%d reasoning=%d",
+		c.logger.Printf("[z.ai] Response has: reasoning_content=%v thinking=%v content_blocks=%d reasoning=%d",
 			msg.ReasoningContent != "", msg.Thinking != "", len(msg.ContentBlocks), len(msg.Reasoning))
+		logging.DevLog("z.ai: enhanced response with reasoning=%v blocks=%d", 
+			msg.ReasoningContent != "", len(msg.ContentBlocks))
 		return c.parseZAIResponse(&zaiResp)
 	}
 
 	// Fallback to standard parsing
 	if err := json.Unmarshal(respBody, &respPayload); err != nil {
+		logging.ErrorLog("z.ai response parse error: %v", err)
 		return respPayload, fmt.Errorf("parse response: %w", err)
 	}
+	logging.DevLog("z.ai: received standard response with %d choices", len(respPayload.Choices))
 	return respPayload, nil
 }

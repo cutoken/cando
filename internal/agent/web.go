@@ -923,13 +923,15 @@ func (s *webServer) writeSessionPayload(w http.ResponseWriter, r *http.Request) 
 
 func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath string) (sessionPayload, error) {
 	providers, currentProvider := s.getProvidersFromDisk()
+	activeModel := s.agent.getActiveModel()
+	
 	payload := sessionPayload{
 		Thinking:              s.agent.thinkingEnabled,
 		ForceThinking:         s.agent.forceThinking,
 		SystemPrompt:          s.agent.cfg.SystemPrompt,
 		Running:               s.agent.HasInFlightRequest(),
 		TotalTokens:           s.agent.getTotalTokens(),
-		Model:                 s.agent.getActiveModel(),
+		Model:                 activeModel,
 		SummaryModel:          s.agent.cfg.SummaryModel,
 		Providers:             providers,
 		ProviderSummaryModels: s.agent.cfg.ProviderSummaryModels,

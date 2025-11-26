@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -280,6 +281,13 @@ func main() {
 
 	// Determine port
 	listenPort := 3737
+	if portEnv := os.Getenv("CANDO_PORT"); portEnv != "" {
+		if port, err := strconv.Atoi(portEnv); err == nil && port > 0 {
+			listenPort = port
+		}
+	} else if os.Getenv("DEV_MODE") == "true" {
+		listenPort = 4000
+	}
 	if *port > 0 {
 		listenPort = *port
 	}
@@ -321,12 +329,8 @@ func findAvailablePort(startPort int) string {
 }
 
 func projectStorageRoot(workspace string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
 	slug := projectSlug(workspace)
-	return filepath.Join(home, ".cando", "projects", slug), nil
+	return filepath.Join(config.GetConfigDir(), "projects", slug), nil
 }
 
 func projectSlug(path string) string {

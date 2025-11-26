@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"cando/internal/credentials"
+	"cando/internal/logging"
 )
 
 var errEntryLimit = errors.New("entry limit reached")
@@ -536,6 +537,7 @@ func (s *ShellTool) Call(ctx context.Context, args map[string]any) (string, erro
 	cmdName := filepath.Base(rawCmd[0])
 	for _, blocked := range blockedCommands {
 		if cmdName == blocked {
+			logging.ErrorLog("shell: blocked command '%s' - interactive commands not allowed", blocked)
 			return "", fmt.Errorf("command '%s' requires interactive input and is not allowed. Use alternative approaches that don't require user interaction", blocked)
 		}
 	}
@@ -548,6 +550,9 @@ func (s *ShellTool) Call(ctx context.Context, args map[string]any) (string, erro
 	if err != nil {
 		return "", err
 	}
+
+	// Log command for debugging
+	logging.DevLog("shell: executing command %v in %s", rawCmd, workdir)
 
 	if bg, ok := args["background"].(bool); ok && bg {
 		if s.bgTool == nil {
@@ -616,6 +621,8 @@ func (s *ShellTool) Call(ctx context.Context, args map[string]any) (string, erro
 		exitCode = ps.ExitCode()
 	}
 
+	logging.DevLog("shell: command completed in %dms with exit code %d", duration.Milliseconds(), exitCode)
+
 	result := map[string]any{
 		"workdir":     resolvedDir,
 		"stdout":      stdout.String(),
@@ -625,13 +632,16 @@ func (s *ShellTool) Call(ctx context.Context, args map[string]any) (string, erro
 	}
 	if runErr != nil {
 		if errors.Is(runErr, context.DeadlineExceeded) {
+			logging.ErrorLog("shell: command timed out after %d seconds", int(timeout.Seconds()))
 			result["error"] = fmt.Sprintf("Command timed out after %d seconds and was killed. Output may be incomplete.", int(timeout.Seconds()))
 			result["timed_out"] = true
 		} else {
+			logging.ErrorLog("shell: command failed: %v", runErr)
 			result["error"] = runErr.Error()
 		}
 	}
 	if warning != "" {
+		logging.ErrorLog("shell: %s", warning)
 		result["warning"] = warning
 	}
 	data, err := json.Marshal(result)

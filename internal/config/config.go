@@ -11,16 +11,36 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Provider-specific default model constants
+const (
+	// Main model defaults
+	DefaultZAIModel        = "glm-4.6"
+	DefaultOpenRouterModel = "deepseek/deepseek-chat-v3-0324"
+	DefaultMockModel       = "mock-model"
+	
+	// Summary model defaults  
+	DefaultZAISummaryModel        = "glm-4.5-air"
+	DefaultOpenRouterSummaryModel = "qwen/qwen3-30b-a3b-instruct-2507"
+	DefaultMockSummaryModel       = "mock-summary-model"
+	
+	// VL (Vision Language) model defaults
+	DefaultZAIVLModel        = "glm-4.5v"
+	DefaultOpenRouterVLModel = "qwen/qwen2.5-vl-32b-instruct"
+	DefaultMockVLModel       = "mock-vl-model"
+)
+
 // Config captures the tunable runtime settings for the agent.
 const DefaultCompactionPrompt = "Summarize the following text in 20 words or fewer. Return only the summary."
 
 type Config struct {
 	Model                 string            `yaml:"model"`
 	SummaryModel          string            `yaml:"summary_model"`
+	VLModel               string            `yaml:"vl_model"`
 	BaseURL               string            `yaml:"base_url"`
 	Provider              string            `yaml:"provider"`
 	ProviderModels        map[string]string `yaml:"provider_models"`
 	ProviderSummaryModels map[string]string `yaml:"provider_summary_models"`
+	ProviderVLModels      map[string]string `yaml:"provider_vl_models"`
 	Temperature           float64           `yaml:"temperature"`
 	SystemPrompt          string            `yaml:"system_prompt"`
 	RequestTimeoutSeconds int               `yaml:"request_timeout_seconds"`
@@ -39,14 +59,9 @@ type Config struct {
 	CompactionPrompt      string            `yaml:"compaction_summary_prompt"`
 }
 
-// EnsureDefaultConfig creates ~/.cando/config.yaml with provider-appropriate defaults if it doesn't exist
+// EnsureDefaultConfig creates config.yaml with provider-appropriate defaults if it doesn't exist
 func EnsureDefaultConfig(provider string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("get home directory: %w", err)
-	}
-
-	configDir := filepath.Join(home, ".cando")
+	configDir := GetConfigDir()
 	configPath := filepath.Join(configDir, "config.yaml")
 
 	// If config already exists, nothing to do
@@ -59,33 +74,42 @@ func EnsureDefaultConfig(provider string) error {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
-	// Create provider-specific defaults
 	cfg := Config{}
 	switch strings.ToLower(provider) {
 	case "zai":
-		cfg.Model = "glm-4.6"
+		cfg.Model = DefaultZAIModel
 		cfg.ProviderModels = map[string]string{
-			"zai": "glm-4.6",
+			"zai": DefaultZAIModel,
 		}
-		cfg.SummaryModel = "glm-4.5-air"
+		cfg.SummaryModel = DefaultZAISummaryModel
 		cfg.ProviderSummaryModels = map[string]string{
-			"zai":        "glm-4.5-air",
-			"openrouter": "qwen/qwen3-next-80b-a3b-instruct",
+			"zai":        DefaultZAISummaryModel,
+			"openrouter": DefaultOpenRouterSummaryModel,
+		}
+		cfg.VLModel = DefaultZAIVLModel
+		cfg.ProviderVLModels = map[string]string{
+			"zai":        DefaultZAIVLModel,
+			"openrouter": DefaultOpenRouterVLModel,
 		}
 		cfg.ZAIBaseURL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 	case "openrouter":
-		cfg.Model = "qwen/qwen-2.5-72b-instruct"
+		cfg.Model = DefaultOpenRouterModel
 		cfg.ProviderModels = map[string]string{
-			"openrouter": "qwen/qwen-2.5-72b-instruct",
+			"openrouter": DefaultOpenRouterModel,
 		}
-		cfg.SummaryModel = "qwen/qwen3-next-80b-a3b-instruct"
+		cfg.SummaryModel = DefaultOpenRouterSummaryModel
 		cfg.ProviderSummaryModels = map[string]string{
-			"zai":        "glm-4.5-air",
-			"openrouter": "qwen/qwen3-next-80b-a3b-instruct",
+			"zai":        DefaultZAISummaryModel,
+			"openrouter": DefaultOpenRouterSummaryModel,
+		}
+		cfg.VLModel = DefaultOpenRouterVLModel
+		cfg.ProviderVLModels = map[string]string{
+			"zai":        DefaultZAIVLModel,
+			"openrouter": DefaultOpenRouterVLModel,
 		}
 	default:
 		// Use general defaults
-		cfg.Model = "qwen/qwen-2.5-72b-instruct"
+		cfg.Model = DefaultOpenRouterModel
 	}
 
 	// Apply standard defaults for other fields
@@ -94,8 +118,8 @@ func EnsureDefaultConfig(provider string) error {
 	cfg.ForceThinking = true
 	cfg.ContextProfile = "memory"
 	cfg.ContextMessagePercent = 0.02 // 2% of model context
-	cfg.ContextTotalPercent = 0.50   // 50% of model context
-	cfg.ContextProtectRecent = 5
+	cfg.ContextTotalPercent = 0.80   // 80% of model context
+	cfg.ContextProtectRecent = 2
 	cfg.CompactionPrompt = DefaultCompactionPrompt
 	cfg.WorkspaceRoot = "."
 	cfg.SystemPrompt = ""
@@ -119,11 +143,7 @@ func EnsureDefaultConfig(provider string) error {
 func LoadUserConfig() (Config, error) {
 	configPath := os.Getenv("CANDO_CONFIG_PATH")
 	if configPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return Config{}, fmt.Errorf("get home directory: %w", err)
-		}
-		configPath = filepath.Join(home, ".cando", "config.yaml")
+		configPath = filepath.Join(GetConfigDir(), "config.yaml")
 	}
 
 	// If file doesn't exist, return defaults
@@ -176,12 +196,8 @@ func (c *Config) applyDefaults() {
 	if c.BaseURL == "" {
 		c.BaseURL = "https://openrouter.ai/api/v1"
 	}
-	if c.Model == "" {
-		c.Model = "qwen/qwen2-80b-instruct"
-	}
-	if c.SummaryModel == "" {
-		c.SummaryModel = "glm-4.5-air"
-	}
+	// Note: Model and SummaryModel defaults are handled by EnsureDefaultConfig() 
+	// and provider-aware fallbacks in ModelFor()/SummaryModelFor() to avoid conflicts
 	if c.Temperature == 0 {
 		c.Temperature = 0.2
 	}
@@ -189,7 +205,7 @@ func (c *Config) applyDefaults() {
 		c.RequestTimeoutSeconds = 90
 	}
 	if c.ConversationDir == "" {
-		c.ConversationDir = "conversations"
+		c.ConversationDir = filepath.Join(GetConfigDir(), "conversations")
 	}
 	if c.WorkspaceRoot == "" {
 		c.WorkspaceRoot = "."
@@ -207,7 +223,7 @@ func (c *Config) applyDefaults() {
 		c.ContextMessagePercent = 0.02 // 2% default
 	}
 	if c.ContextTotalPercent <= 0 {
-		c.ContextTotalPercent = 0.50 // 50% default
+		c.ContextTotalPercent = 0.80 // 80% default
 	}
 	if c.MemoryStorePath == "" {
 		root := c.WorkspaceRoot
@@ -338,14 +354,84 @@ func absPath(path string) string {
 	return abs
 }
 
-// ModelFor returns the configured model for the given provider key, falling back to the default Model.
+func GetConfigDir() string {
+	if configDir := os.Getenv("CANDO_CONFIG_DIR"); configDir != "" {
+		return configDir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".cando"
+	}
+	return filepath.Join(home, ".cando")
+}
+
+// ModelFor returns the configured model for the given provider key, falling back to provider-appropriate defaults.
 func (c Config) ModelFor(provider string) string {
+	provider = strings.ToLower(provider)
+	
 	if len(c.ProviderModels) > 0 {
-		if model := strings.TrimSpace(c.ProviderModels[strings.ToLower(provider)]); model != "" {
+		if model := strings.TrimSpace(c.ProviderModels[provider]); model != "" {
 			return model
 		}
 	}
-	return c.Model
+	
+	switch provider {
+	case "zai":
+		return DefaultZAIModel
+	case "openrouter":
+		return DefaultOpenRouterModel
+	case "mock":
+		return DefaultMockModel
+	default:
+		return c.Model
+	}
+}
+
+// SummaryModelFor returns the configured summary model for the given provider key, falling back to provider-appropriate defaults.
+func (c Config) SummaryModelFor(provider string) string {
+	provider = strings.ToLower(provider)
+	
+	if len(c.ProviderSummaryModels) > 0 {
+		if model := strings.TrimSpace(c.ProviderSummaryModels[provider]); model != "" {
+			return model
+		}
+	}
+	
+	switch provider {
+	case "zai":
+		return DefaultZAISummaryModel
+	case "openrouter":
+		return DefaultOpenRouterSummaryModel
+	case "mock":
+		return DefaultMockSummaryModel
+	default:
+		return c.SummaryModel
+	}
+}
+
+// VLModelFor returns the appropriate VL (Vision Language) model for a provider
+func (c Config) VLModelFor(provider string) string {
+	provider = strings.ToLower(provider)
+	
+	if len(c.ProviderVLModels) > 0 {
+		if model := strings.TrimSpace(c.ProviderVLModels[provider]); model != "" {
+			return model
+		}
+	}
+	
+	switch provider {
+	case "zai":
+		return DefaultZAIVLModel
+	case "openrouter":
+		return DefaultOpenRouterVLModel
+	case "mock":
+		return DefaultMockVLModel
+	default:
+		if model := strings.TrimSpace(c.VLModel); model != "" {
+			return model
+		}
+		return DefaultOpenRouterVLModel
+	}
 }
 
 // CalculateMessageThreshold returns the absolute character threshold for message compaction
@@ -378,11 +464,7 @@ func (c Config) CalculateConversationThreshold(provider, model string) int {
 func Save(c Config) error {
 	configPath := os.Getenv("CANDO_CONFIG_PATH")
 	if configPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		configPath = filepath.Join(home, ".cando", "config.yaml")
+		configPath = filepath.Join(GetConfigDir(), "config.yaml")
 	}
 
 	data, err := yaml.Marshal(c)
