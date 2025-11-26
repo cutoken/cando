@@ -1,0 +1,779 @@
+const MAX_VISIBLE_MESSAGES = 120;
+
+const ui = {
+  stateList: null,
+  messages: null,
+  planSteps: null,
+  planUpdated: null,
+  planStatus: null,
+  promptForm: null,
+  promptInput: null,
+  sendBtn: null,
+  cancelBtn: null,
+  thinkingToggle: null,
+  statusText: null,
+  statusMeta: null,
+  currentStateLabel: null,
+  newStateBtn: null,
+  clearStateBtn: null,
+  deleteStateBtn: null,
+  messageBanner: null,
+  sidebarToggle: null,
+  thinkingIndicator: null,
+};
+
+const appState = {
+  data: null,
+  busy: false,
+  showAllMessages: false,
+  sidebarCollapsed: false,
+  currentAbortController: null,
+};
+
+async function initUI() {
+  ui.stateList = document.getElementById('stateList');
+  ui.messages = document.getElementById('messages');
+  ui.promptForm = document.getElementById('promptForm');
+  ui.promptInput = document.getElementById('promptInput');
+  ui.sendBtn = document.getElementById('sendBtn');
+  ui.cancelBtn = document.getElementById('cancelBtn');
+  ui.thinkingToggle = document.getElementById('thinkingToggle');
+  ui.statusText = document.getElementById('statusText');
+  ui.statusMeta = document.getElementById('statusMeta');
+  ui.currentStateLabel = document.getElementById('currentStateLabel');
+  ui.newStateBtn = document.getElementById('newStateBtn');
+  ui.clearStateBtn = document.getElementById('clearStateBtn');
+  ui.deleteStateBtn = document.getElementById('deleteStateBtn');
+  ui.messageBanner = document.getElementById('messageBanner');
+  ui.sidebarToggle = document.getElementById('sidebarToggle');
+  ui.thinkingIndicator = document.getElementById('thinkingIndicator');
+
+  ui.promptForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await submitPrompt();
+  });
+  ui.promptInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitPrompt();
+    }
+  });
+  ui.cancelBtn.addEventListener('click', cancelRequest);
+  ui.thinkingToggle.addEventListener('click', toggleThinking);
+  ui.newStateBtn.addEventListener('click', createState);
+  ui.clearStateBtn.addEventListener('click', clearState);
+  ui.deleteStateBtn.addEventListener('click', deleteState);
+  ui.sidebarToggle.addEventListener('click', () => setSidebarCollapsed(!appState.sidebarCollapsed));
+  setSidebarCollapsed(false);
+
+  await refreshSession();
+}
+
+async function refreshSession() {
+  setBusy(true, 'Syncing context…');
+  try {
+    const res = await fetch('/api/session');
+    if (!res.ok) throw new Error('Session fetch failed');
+    appState.data = await res.json();
+    appState.showAllMessages = false;
+    render();
+    setStatus(appState.data.running ? 'Sublimating… (Esc to cancel)' : 'Ready.');
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message || 'Failed to load session');
+  } finally {
+    setBusy(false);
+  }
+}
+
+function render() {
+  if (!appState.data) return;
+  renderStates();
+  renderMessages();
+  ui.currentStateLabel.textContent = appState.data.current_key || '–';
+  updateStatusMeta();
+  ui.thinkingToggle.textContent = appState.data.thinking ? 'On' : 'Off';
+  ui.thinkingToggle.classList.toggle('active', appState.data.thinking);
+  ui.cancelBtn.disabled = !appState.data.running;
+}
+
+function renderStates() {
+  ui.stateList.innerHTML = '';
+  const sessions = appState.data.sessions && appState.data.sessions.length ? appState.data.sessions : (appState.data.keys || []).map((key) => ({ key }));
+  sessions.forEach((summary) => {
+    const key = summary.key;
+    const btn = document.createElement('button');
+    btn.className = 'state-item' + (key === appState.data.current_key ? ' active' : '');
+    const title = document.createElement('div');
+    title.className = 'state-name';
+    title.textContent = key;
+    const meta = document.createElement('div');
+    meta.className = 'state-meta';
+    meta.textContent = formatSessionMeta(summary);
+    btn.append(title, meta);
+    btn.addEventListener('click', () => switchState(key));
+    ui.stateList.appendChild(btn);
+  });
+}
+
+function renderMessages() {
+  ui.messages.innerHTML = '';
+  const total = appState.data.messages.length;
+  let messages = appState.data.messages;
+  let truncated = false;
+  let offset = 0;
+  if (!appState.showAllMessages && total > MAX_VISIBLE_MESSAGES) {
+    offset = Math.max(total - MAX_VISIBLE_MESSAGES, 0);
+    messages = messages.slice(offset);
+    truncated = true;
+  }
+
+  renderMessageBanner(truncated, total, messages.length);
+
+  const lastPrimaryIndex = findLastPrimaryMessageIndex(messages);
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === 'tool') {
+      continue;
+    }
+    const attached = [];
+    let peek = i + 1;
+    while (peek < messages.length && messages[peek].role === 'tool') {
+      attached.push(messages[peek]);
+      peek++;
+    }
+    i = peek - 1;
+
+    const isLatest = offset + i === findLastPrimaryMessageIndex(appState.data.messages);
+    const node = createMessageElement(msg, attached, isLatest);
+    if (node) {
+      ui.messages.appendChild(node);
+    }
+  }
+  ui.messages.scrollTop = ui.messages.scrollHeight;
+}
+
+function findLastPrimaryMessageIndex(messages) {
+  for (let idx = messages.length - 1; idx >= 0; idx--) {
+    if (messages[idx].role !== 'tool') {
+      return idx;
+    }
+  }
+  return -1;
+}
+
+function renderMessageBanner(truncated, total, visible) {
+  if (!ui.messageBanner) return;
+  ui.messageBanner.innerHTML = '';
+  if (!truncated && !appState.showAllMessages && total <= MAX_VISIBLE_MESSAGES) {
+    ui.messageBanner.classList.add('hidden');
+    return;
+  }
+  ui.messageBanner.classList.remove('hidden');
+
+  const text = document.createElement('span');
+  if (appState.showAllMessages) {
+    text.textContent = `Showing all ${total} messages.`;
+  } else if (truncated) {
+    text.textContent = `Showing the latest ${visible} of ${total} messages.`;
+  } else {
+    text.textContent = `Showing ${visible} messages.`;
+  }
+  ui.messageBanner.appendChild(text);
+
+  const btn = document.createElement('button');
+  btn.className = 'ghost';
+  if (appState.showAllMessages) {
+    btn.textContent = 'Collapse history';
+    btn.addEventListener('click', () => {
+      appState.showAllMessages = false;
+      renderMessages();
+    });
+  } else {
+    btn.textContent = truncated ? 'Show entire history' : 'Collapse history';
+    btn.addEventListener('click', () => {
+      appState.showAllMessages = !appState.showAllMessages;
+      renderMessages();
+    });
+  }
+  ui.messageBanner.appendChild(btn);
+}
+
+function formatSessionMeta(summary) {
+  if (!summary) return '';
+  const count = summary.message_count ?? summary.messages ?? '';
+  const stamp = summary.updated_at || summary.created_at;
+  if (!stamp) {
+    return count ? `${count} messages` : '';
+  }
+  const date = new Date(stamp);
+  const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const msgs = count ? ` · ${count} msgs` : '';
+  return `${dateStr} · ${timeStr}${msgs}`;
+}
+
+function roleLabel(msg) {
+  switch (msg.role) {
+    case 'assistant':
+      return 'Cando';
+    case 'user':
+      return 'You';
+    case 'system':
+      return 'System';
+    case 'tool':
+      return msg.name ? `Tool · ${msg.name}` : 'Tool';
+    default:
+      return msg.role || 'Unknown';
+  }
+}
+
+function createMessageElement(msg, attachedTools = [], isLatest = false) {
+  const wrapper = document.createElement('article');
+  wrapper.className = `message ${msg.role}`;
+
+  const role = document.createElement('div');
+  role.className = 'message-role';
+  role.textContent = roleLabel(msg);
+
+  const body = document.createElement('div');
+  body.className = 'message-body';
+
+  if (msg.role === 'tool') {
+    body.appendChild(buildToolCard(msg));
+  } else {
+    body.innerHTML = renderMarkdown(msg.content || '');
+    const toolCalls = msg.tool_calls || [];
+    if (toolCalls.length > 0 || attachedTools.length > 0) {
+      body.appendChild(buildToolGroup(toolCalls, attachedTools, isLatest));
+    }
+  }
+
+  wrapper.append(role, body);
+  return wrapper;
+}
+
+function buildToolCard(msg) {
+  const card = document.createElement('div');
+  card.className = 'tool-card';
+  const name = msg.name || 'Tool';
+  const summary = document.createElement('details');
+
+  // Expand shell commands by default
+  summary.open = name === 'shell';
+
+  const heading = document.createElement('summary');
+  const cmd = formatToolCommand(msg);
+  heading.textContent = cmd ? `${name}: ${cmd}` : `${name} output`;
+  summary.appendChild(heading);
+  if (msg.content) {
+    const pre = document.createElement('pre');
+    pre.textContent = msg.content;
+    summary.appendChild(pre);
+  }
+  card.appendChild(summary);
+  return card;
+}
+
+function buildToolCallCard(toolCall) {
+  const card = document.createElement('div');
+  card.className = 'tool-card tool-call';
+  const funcName = toolCall.function?.name || 'unknown';
+  const args = toolCall.function?.arguments || '{}';
+
+  const summary = document.createElement('details');
+  summary.open = false;
+
+  const heading = document.createElement('summary');
+  heading.innerHTML = `<span class="tool-name">${escapeHtml(funcName)}</span> <span class="tool-status">calling...</span>`;
+  summary.appendChild(heading);
+
+  const argsContainer = document.createElement('div');
+  argsContainer.className = 'tool-arguments';
+  try {
+    const parsed = JSON.parse(args);
+    const pre = document.createElement('pre');
+    pre.textContent = JSON.stringify(parsed, null, 2);
+    argsContainer.appendChild(pre);
+  } catch (e) {
+    const pre = document.createElement('pre');
+    pre.textContent = args;
+    argsContainer.appendChild(pre);
+  }
+
+  summary.appendChild(argsContainer);
+  card.appendChild(summary);
+  return card;
+}
+
+function buildToolGroup(toolCalls, toolMessages, isLatest) {
+  const container = document.createElement('details');
+  container.open = isLatest;
+  container.className = 'tool-group';
+
+  const summary = document.createElement('summary');
+  summary.textContent = formatToolGroupLabel(toolCalls, toolMessages);
+  container.appendChild(summary);
+
+  const stack = document.createElement('div');
+  stack.className = 'tool-stack';
+
+  toolCalls.forEach((toolCall) => {
+    stack.appendChild(buildToolCallCard(toolCall));
+  });
+
+  toolMessages.forEach((toolMsg) => {
+    stack.appendChild(buildToolCard(toolMsg));
+  });
+
+  container.appendChild(stack);
+  return container;
+}
+
+function formatToolGroupLabel(toolCalls, toolMessages) {
+  const callCount = (toolCalls || []).length;
+  const responseCount = (toolMessages || []).length;
+  const total = callCount + responseCount;
+
+  if (total === 0) {
+    return 'Tool operations';
+  }
+
+  const names = [];
+  (toolCalls || []).forEach((tc) => {
+    if (tc.function && tc.function.name) {
+      names.push(tc.function.name);
+    }
+  });
+  (toolMessages || []).forEach((msg) => {
+    if (msg.name && !names.includes(msg.name)) {
+      names.push(msg.name);
+    }
+  });
+
+  if (names.length === 0) {
+    return `${total} tool operation${total !== 1 ? 's' : ''}`;
+  }
+
+  if (names.length === 1) {
+    return `${names[0]}`;
+  }
+
+  const maxPreview = 2;
+  const preview = names.slice(0, maxPreview).join(', ');
+  if (names.length <= maxPreview) {
+    return `${names.length} tools: ${preview}`;
+  }
+
+  const remaining = names.length - maxPreview;
+  return `${names.length} tools: ${preview} +${remaining} more`;
+}
+
+const thinkingPhrases = [
+  'Contemplating the void...',
+  'Summoning electrons...',
+  'Consulting the oracle...',
+  'Rearranging neurons...',
+  'Calculating probabilities...',
+  'Parsing reality...',
+  'Traversing the lattice...',
+  'Invoking the spirits...',
+  'Pondering existence...',
+  'Defragmenting thoughts...',
+];
+
+let thinkingInterval = null;
+let currentThinkingIndex = 0;
+
+function startThinkingIndicator() {
+  currentThinkingIndex = Math.floor(Math.random() * thinkingPhrases.length);
+  setStatus(thinkingPhrases[currentThinkingIndex]);
+
+  thinkingInterval = setInterval(() => {
+    currentThinkingIndex = (currentThinkingIndex + 1) % thinkingPhrases.length;
+    setStatus(thinkingPhrases[currentThinkingIndex]);
+  }, 2000);
+}
+
+function stopThinkingIndicator() {
+  if (thinkingInterval) {
+    clearInterval(thinkingInterval);
+    thinkingInterval = null;
+  }
+}
+
+async function submitPrompt() {
+  if (appState.busy) return;
+  const content = ui.promptInput.value.trim();
+  if (!content) {
+    setStatus('Enter a prompt.');
+    return;
+  }
+
+  // Immediately show user's message in the feed
+  appendUserMessage(content);
+
+  // Show thinking indicator
+  appendThinkingPlaceholder();
+
+  // Create abort controller for this request
+  appState.currentAbortController = new AbortController();
+
+  setBusy(true);
+  startThinkingIndicator();
+  ui.promptInput.value = '';
+
+  try {
+    const res = await fetch('/api/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+      signal: appState.currentAbortController.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || 'Stream failed');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim() || !line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        try {
+          const event = JSON.parse(data);
+          handleStreamEvent(event);
+        } catch (e) {
+          console.error('Failed to parse SSE event:', e, data);
+        }
+      }
+    }
+
+    removeThinkingPlaceholder();
+    await refreshSession();
+    setStatus('Response received.');
+  } catch (err) {
+    console.error(err);
+    removeThinkingPlaceholder();
+
+    // Check if it was aborted
+    if (err.name === 'AbortError') {
+      setStatus('Request cancelled.');
+    } else {
+      setStatus(err.message || 'Request failed.');
+    }
+
+    await refreshSession();
+  } finally {
+    stopThinkingIndicator();
+    setBusy(false);
+    appState.currentAbortController = null;
+  }
+}
+
+function appendUserMessage(content) {
+  const wrapper = document.createElement('article');
+  wrapper.className = 'message user';
+
+  const role = document.createElement('div');
+  role.className = 'message-role';
+  role.textContent = 'You';
+
+  const body = document.createElement('div');
+  body.className = 'message-body';
+  body.innerHTML = renderMarkdown(content);
+
+  wrapper.append(role, body);
+  ui.messages.appendChild(wrapper);
+  ui.messages.scrollTop = ui.messages.scrollHeight;
+}
+
+function appendThinkingPlaceholder() {
+  if (ui.thinkingIndicator) {
+    ui.thinkingIndicator.classList.remove('hidden');
+  }
+}
+
+function removeThinkingPlaceholder() {
+  if (ui.thinkingIndicator) {
+    ui.thinkingIndicator.classList.add('hidden');
+  }
+}
+
+function handleStreamEvent(event) {
+  switch (event.type) {
+    case 'tool_call_started':
+      console.log('Tool call started:', event.data);
+      setStatus(`Running ${event.data.function}...`);
+      appendStreamingToolCall(event.data);
+      break;
+    case 'tool_call_completed':
+      console.log('Tool call completed:', event.data);
+      setStatus(`Completed ${event.data.function}`);
+      updateStreamingToolResult(event.data);
+      break;
+    case 'assistant_message':
+      console.log('Assistant message:', event.data);
+      setStatus('Response received');
+      break;
+    case 'complete':
+      console.log('Stream complete');
+      break;
+    case 'error':
+      console.error('Stream error:', event.data);
+      setStatus(`Error: ${event.data.message}`);
+      break;
+  }
+}
+
+function appendStreamingToolCall(data) {
+  const messages = ui.messages;
+  let lastMessage = messages.lastElementChild;
+
+  if (!lastMessage || !lastMessage.classList.contains('streaming-tools')) {
+    lastMessage = document.createElement('div');
+    lastMessage.className = 'message assistant streaming-tools';
+    const role = document.createElement('div');
+    role.className = 'message-role';
+    role.textContent = 'Cando';
+    const body = document.createElement('div');
+    body.className = 'message-body';
+    const toolGroup = document.createElement('div');
+    toolGroup.className = 'tool-stack streaming';
+    body.appendChild(toolGroup);
+    lastMessage.append(role, body);
+    messages.appendChild(lastMessage);
+  }
+
+  const toolStack = lastMessage.querySelector('.tool-stack');
+  const toolCard = document.createElement('div');
+  toolCard.className = 'tool-card tool-call streaming';
+  toolCard.dataset.toolId = data.id;
+
+  const details = document.createElement('details');
+  details.open = true;
+
+  const summary = document.createElement('summary');
+  summary.innerHTML = `<span class="tool-name">${escapeHtml(data.function)}</span> <span class="tool-status">running...</span>`;
+  details.appendChild(summary);
+
+  const argsContainer = document.createElement('div');
+  argsContainer.className = 'tool-arguments';
+  try {
+    const parsed = JSON.parse(data.arguments);
+    const pre = document.createElement('pre');
+    pre.textContent = JSON.stringify(parsed, null, 2);
+    argsContainer.appendChild(pre);
+  } catch (e) {
+    const pre = document.createElement('pre');
+    pre.textContent = data.arguments;
+    argsContainer.appendChild(pre);
+  }
+  details.appendChild(argsContainer);
+  toolCard.appendChild(details);
+  toolStack.appendChild(toolCard);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function updateStreamingToolResult(data) {
+  const toolCard = document.querySelector(`[data-tool-id="${data.id}"]`);
+  if (!toolCard) return;
+
+  const status = toolCard.querySelector('.tool-status');
+  if (status) {
+    status.textContent = data.error ? 'failed' : 'completed';
+    status.style.color = data.error ? 'var(--danger)' : 'var(--muted)';
+  }
+}
+
+async function switchState(key) {
+  setBusy(true, `Switching to ${key}…`);
+  try {
+    await mutateState({ action: 'switch', key });
+    collapseSidebarAfterSelection();
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function createState() {
+  const key = prompt('Name for the new session:');
+  if (!key) return;
+  setBusy(true, 'Creating session…');
+  try {
+    await mutateState({ action: 'new', key });
+    collapseSidebarAfterSelection();
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function clearState() {
+  if (!confirm('Clear the current conversation history?')) return;
+  setBusy(true, 'Clearing history…');
+  try {
+    await mutateState({ action: 'clear' });
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function deleteState() {
+  const current = appState.data?.current_key;
+  if (!current) return;
+  if (!confirm(`Delete session "${current}" permanently?`)) return;
+  setBusy(true, 'Deleting session…');
+  try {
+    await mutateState({ action: 'delete', key: current });
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function mutateState(payload) {
+  const res = await fetch('/api/state', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'State update failed');
+  }
+  appState.data = await res.json();
+  appState.showAllMessages = false;
+  render();
+}
+
+function renderMarkdown(text) {
+  const source = text || '';
+  if (window.marked) {
+    const html = window.marked.parse(source, { breaks: true });
+    if (window.DOMPurify) {
+      return window.DOMPurify.sanitize(html);
+    }
+    return html;
+  }
+  return escapeHtml(source).replace(/\n/g, '<br/>');
+}
+
+function escapeHtml(str) {
+  return (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function toggleThinking() {
+  if (!appState.data) return;
+  const next = !appState.data.thinking;
+  const res = await fetch('/api/thinking', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: next }),
+  });
+  if (!res.ok) {
+    setStatus('Thinking toggle failed');
+    return;
+  }
+  appState.data = await res.json();
+  render();
+}
+
+async function cancelRequest() {
+  // Abort the current fetch request if it exists
+  if (appState.currentAbortController) {
+    appState.currentAbortController.abort();
+    appState.currentAbortController = null;
+  }
+
+  // Also notify backend to cancel
+  try {
+    await fetch('/api/cancel', { method: 'POST' });
+  } catch (e) {
+    console.error('Failed to notify backend of cancellation:', e);
+  }
+}
+
+function setBusy(flag, message) {
+  appState.busy = flag;
+  ui.sendBtn.disabled = flag;
+  ui.promptInput.readOnly = flag;
+  ui.cancelBtn.disabled = !flag;
+
+  // Change button text and style based on state
+  if (flag) {
+    ui.cancelBtn.textContent = 'Stop';
+    ui.cancelBtn.classList.add('danger');
+    ui.sendBtn.style.display = 'none';
+    ui.cancelBtn.style.display = 'block';
+  } else {
+    ui.cancelBtn.textContent = 'Cancel';
+    ui.cancelBtn.classList.remove('danger');
+    ui.sendBtn.style.display = 'block';
+    ui.cancelBtn.style.display = 'none';
+  }
+
+  if (message) setStatus(message);
+}
+
+function setStatus(message) {
+  if (ui.statusText) {
+    ui.statusText.textContent = message;
+  }
+}
+
+function updateStatusMeta() {
+  if (!ui.statusMeta || !appState.data) return;
+  const chars = appState.data.context_chars?.toLocaleString() || '0';
+  const model = appState.data.model || '';
+  ui.statusMeta.textContent = model
+    ? `Model: ${model} · ${chars} chars in context`
+    : `${chars} chars in context`;
+}
+
+function setSidebarCollapsed(flag) {
+  appState.sidebarCollapsed = flag;
+  document.body.classList.toggle('sidebar-collapsed', flag);
+  updateSidebarToggleIcon(flag);
+}
+
+function collapseSidebarAfterSelection() {
+  setSidebarCollapsed(true);
+}
+
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 1400 && appState.sidebarCollapsed) {
+    setSidebarCollapsed(false);
+  }
+});
+
+document.addEventListener('DOMContentLoaded', initUI);
+
+function formatToolCommand(msg) {
+  if (!msg || !msg.arguments) {
+    return '';
+  }
+  try {
+    const data = JSON.parse(msg.arguments);
+    if (Array.isArray(data.command)) {
+      return data.command.join(' ');
+    }
+  } catch (err) {
+    return '';
+  }
+  return '';
+}

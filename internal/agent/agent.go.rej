@@ -1,0 +1,12 @@
+--- internal/agent/agent.go
++++ internal/agent/agent.go
+@@ -72,7 +72,8 @@
+ 	}()
+ 
+ 	reader := bufio.NewReader(os.Stdin)
+-	fmt.Println("Type ':help' for commands. Send prompts to talk to the agent. Use double Ctrl+C to exit.")
++	fmt.Println("👋 Welcome to SimplAgent! Your AI assistant is ready to help.")
++	fmt.Println("Type ':help' for commands. Send prompts to talk to the agent. Use double Ctrl+C to exit.")
+ 
+ 
+ 

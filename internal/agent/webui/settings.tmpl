@@ -1,0 +1,256 @@
+{{define "settings"}}
+<!-- Settings Dialog -->
+<div id="settingsDialog" class="dialog-overlay" style="display: none;">
+  <div class="dialog-content settings-dialog">
+    <div class="dialog-header">
+      <h2>Settings</h2>
+      <button id="closeSettingsDialog" class="dialog-close">✕</button>
+    </div>
+    <div class="dialog-body">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="providers">API & Providers</button>
+        <button class="tab-btn" data-tab="compaction">Compaction</button>
+        <button class="tab-btn" data-tab="system">LLM Config</button>
+        <button class="tab-btn" data-tab="appearance">Look & Feel</button>
+      </div>
+
+      <div class="tab-content">
+        <!-- API & Providers Tab -->
+        <div id="tab-providers" class="tab-pane active">
+          <!-- Z.AI Provider -->
+          <div class="provider-section" data-provider="zai">
+            <div class="provider-header" onclick="toggleProviderAccordion('zai')">
+              <div class="provider-header-left">
+                <input type="radio" name="activeProvider" value="zai" id="radio-zai" onclick="event.stopPropagation(); switchActiveProvider('zai')">
+                <label for="radio-zai">Z.AI</label>
+              </div>
+              <div class="provider-header-right">
+                <span id="zaiStatus" class="provider-status">Not configured</span>
+                <span class="accordion-icon">▼</span>
+              </div>
+            </div>
+            <div class="provider-body">
+              <div class="form-group">
+                <label>API Key</label>
+                <div class="api-key-input-group">
+                  <input type="password" id="zaiApiKey" placeholder="Enter Z.AI API key" />
+                  <button id="saveZaiKey" class="primary">Save Key</button>
+                </div>
+                <small class="help-text">Get your key at <a href="https://z.ai" target="_blank">z.ai</a></small>
+              </div>
+              <div class="form-group">
+                <label for="zaiModelSelect">Main Model</label>
+                <select id="zaiModelSelect" class="input-select">
+                  <option value="glm-4.6">glm-4.6</option>
+                  <option value="glm-4.5">glm-4.5</option>
+                  <option value="glm-4.5-air">glm-4.5-air</option>
+                </select>
+                <small class="saved-indicator" id="zaiModelSaved" style="display: none;">✓ Saved</small>
+              </div>
+              <div class="form-group">
+                <label for="zaiSummaryModelSelect">Summary Model (for compaction)</label>
+                <select id="zaiSummaryModelSelect" class="input-select">
+                  <option value="glm-4.6">glm-4.6</option>
+                  <option value="glm-4.5">glm-4.5</option>
+                  <option value="glm-4.5-air">glm-4.5-air</option>
+                </select>
+                <small class="saved-indicator" id="zaiSummaryModelSaved" style="display: none;">✓ Saved</small>
+              </div>
+              <div class="form-group">
+                <label for="zaiVisionModel">Vision Model</label>
+                <input type="text" id="zaiVisionModel" class="input-select" placeholder="glm-4.5v (default)" />
+                <small class="help-text">Model for image analysis (default: glm-4.5v)</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- OpenRouter Provider -->
+          <div class="provider-section" data-provider="openrouter">
+            <div class="provider-header" onclick="toggleProviderAccordion('openrouter')">
+              <div class="provider-header-left">
+                <input type="radio" name="activeProvider" value="openrouter" id="radio-openrouter" onclick="event.stopPropagation(); switchActiveProvider('openrouter')">
+                <label for="radio-openrouter">OpenRouter</label>
+              </div>
+              <div class="provider-header-right">
+                <span id="openrouterStatus" class="provider-status">Not configured</span>
+                <span class="accordion-icon">▼</span>
+              </div>
+            </div>
+            <div class="provider-body">
+              <div class="form-group">
+                <label>API Key</label>
+                <div class="api-key-input-group">
+                  <input type="password" id="openrouterApiKey" placeholder="Enter OpenRouter API key" />
+                  <button id="saveOpenrouterKey" class="primary">Save Key</button>
+                </div>
+                <small class="help-text">Get your key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a></small>
+              </div>
+              <div class="form-group">
+                <label for="openrouterModelSearch">Main Model</label>
+                <div class="model-filter-options">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="freeModelsOnly" />
+                    <span>Show only free models</span>
+                  </label>
+                </div>
+                <div class="model-search-wrapper">
+                  <input
+                    type="text"
+                    id="openrouterModelSearch"
+                    class="input-select model-search-input"
+                    placeholder="Search models..."
+                    autocomplete="off"
+                  />
+                  <div id="openrouterModelDropdown" class="model-dropdown" style="display: none;"></div>
+                </div>
+                <div id="openrouterModelInfo" class="model-info" style="display: none;">
+                  <div class="model-info-name"></div>
+                  <div class="model-info-pricing"></div>
+                  <div class="model-info-capabilities"></div>
+                </div>
+                <input type="hidden" id="openrouterModelSelect" />
+                <small class="saved-indicator" id="openrouterModelSaved" style="display: none;">✓ Saved</small>
+              </div>
+              <div class="form-group">
+                <label for="openrouterSummaryModelSearch">Summary Model (for compaction)</label>
+                <div class="model-filter-options">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="freeModelsOnlySummary" />
+                    <span>Show only free models</span>
+                  </label>
+                </div>
+                <div class="model-search-wrapper">
+                  <input
+                    type="text"
+                    id="openrouterSummaryModelSearch"
+                    class="input-select model-search-input"
+                    placeholder="Search models..."
+                    autocomplete="off"
+                  />
+                  <div id="openrouterSummaryModelDropdown" class="model-dropdown" style="display: none;"></div>
+                </div>
+                <div id="openrouterSummaryModelInfo" class="model-info" style="display: none;">
+                  <div class="model-info-name"></div>
+                  <div class="model-info-pricing"></div>
+                  <div class="model-info-capabilities"></div>
+                </div>
+                <input type="hidden" id="openrouterSummaryModel" />
+                <small class="saved-indicator" id="openrouterSummaryModelSaved" style="display: none;">✓ Saved</small>
+                <small class="help-text">Model used for summarizing long messages during context compaction</small>
+              </div>
+              <div class="form-group">
+                <label for="openrouterVisionModelSearch">Vision Model</label>
+                <div class="model-filter-options">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="freeModelsOnlyVision" />
+                    <span>Show only free models</span>
+                  </label>
+                </div>
+                <div class="model-search-wrapper">
+                  <input
+                    type="text"
+                    id="openrouterVisionModelSearch"
+                    class="input-select model-search-input"
+                    placeholder="Search vision models..."
+                    autocomplete="off"
+                  />
+                  <div id="openrouterVisionModelDropdown" class="model-dropdown" style="display: none;"></div>
+                </div>
+                <div id="openrouterVisionModelInfo" class="model-info" style="display: none;">
+                  <div class="model-info-name"></div>
+                  <div class="model-info-pricing"></div>
+                  <div class="model-info-capabilities"></div>
+                </div>
+                <input type="hidden" id="openrouterVisionModel" />
+                <small class="help-text">Model for image analysis (default: qwen/qwen2.5-vl-32b-instruct)</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Compaction Tab -->
+        <div id="tab-compaction" class="tab-pane">
+          <div class="tab-section">
+            <h3>Compaction Settings</h3>
+            <p class="help-text">Context compaction automatically summarizes old messages to manage conversation length.</p>
+
+            <div class="form-group">
+              <label>Profile</label>
+              <div class="info-display"><span id="compactionProfile">—</span></div>
+              <small class="help-text">Perpetual mode keeps full conversation history with automatic compression</small>
+            </div>
+
+            <!-- Advanced Settings Accordion -->
+            <div class="compaction-advanced-section">
+              <div class="compaction-advanced-header" onclick="toggleCompactionAdvanced()">
+                <span>Advanced</span>
+                <span class="accordion-icon">▶</span>
+              </div>
+              <div class="compaction-advanced-body" style="display: none;">
+                <div class="form-group">
+                  <label for="compactionConversationPercent">Conversation Threshold: <span id="conversationPercentValue">50</span>%</label>
+                  <input type="range" id="compactionConversationPercent" class="slider" min="1" max="80" step="1" value="50" />
+                  <small class="help-text">Percentage of model context before compaction triggers (max 80%)</small>
+                </div>
+
+                <div class="form-group">
+                  <label for="compactionProtectRecent">Protected Recent Messages</label>
+                  <input type="number" id="compactionProtectRecent" class="input-select" min="0" />
+                  <small class="help-text">Number of recent messages to protect from compaction</small>
+                </div>
+
+                <div class="form-group">
+                  <label for="compactionMessagePercent">Turn Threshold: <span id="messagePercentValue">2</span>%</label>
+                  <input type="range" id="compactionMessagePercent" class="slider" min="1" max="10" step="1" value="2" />
+                  <small class="help-text">Percentage of model context for turn summarization (max 10%)</small>
+                </div>
+
+                <button id="saveCompactionSettings" class="primary">Save Settings</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-section">
+            <h3>Compaction History</h3>
+            <button id="compactionHistoryBtn" class="ghost">View Compaction History</button>
+            <p class="help-text">View history of context compression events</p>
+          </div>
+        </div>
+
+        <!-- LLM Config Tab -->
+        <div id="tab-system" class="tab-pane">
+          <div class="tab-section">
+            <h3>Model Settings</h3>
+            <div class="form-group">
+              <label>Thinking <button id="thinkingToggle" class="toggle inline-toggle"></button></label>
+            </div>
+            <div class="form-group">
+              <label>Force Thinking <button id="forceThinkingToggle" class="toggle inline-toggle"></button></label>
+            </div>
+            <div class="form-group">
+              <label for="systemPromptInput">System Prompt</label>
+              <textarea id="systemPromptInput" class="input-textarea" rows="8" placeholder="Enter custom system prompt (optional)"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Look & Feel Tab -->
+        <div id="tab-appearance" class="tab-pane">
+          <div class="tab-section">
+            <h3>Appearance</h3>
+            <div class="form-group">
+              <label for="themeSelect">Theme</label>
+              <select id="themeSelect" class="input-select">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="midnight">Midnight</option>
+                <option value="contrast">High Contrast</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}

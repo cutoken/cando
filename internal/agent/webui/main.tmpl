@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cando · Web</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div class="app-shell">
+    {{template "chat" .}}
+  </div>
+
+  <!-- Bottom status bar removed - moved to CANDO bar and input bar
+  <footer class="status-bar">
+    <div class="status-bar-left">
+      <div class="workspace-menu-container">
+        <button id="workspaceMenuBtn" class="workspace-label" title="Show all workspaces">
+          Workspaces:
+          <i data-lucide="chevron-up"></i>
+        </button>
+        <div id="workspaceMenu" class="workspace-menu" style="display: none;"></div>
+      </div>
+      <button id="addWorkspaceBtn" class="add-workspace-btn" title="Add workspace">
+        <i data-lucide="plus"></i>
+      </button>
+      <button id="workspaceTabScrollLeft" class="workspace-scroll-btn hidden" title="Scroll left">
+        <i data-lucide="chevron-left"></i>
+      </button>
+      <div id="workspaceTabsContainer" class="workspace-tabs-container">
+        <div id="workspaceTabs" class="workspace-tabs"></div>
+      </div>
+      <button id="workspaceTabScrollRight" class="workspace-scroll-btn hidden" title="Scroll right">
+        <i data-lucide="chevron-right"></i>
+      </button>
+    </div>
+    <div class="status-bar-right">
+      <button id="helpBtn" class="help-btn" title="Show help">
+        <i data-lucide="help-circle"></i>
+      </button>
+      <div class="status-progress">
+        <div class="context-progress-bar" id="contextProgressBar">
+          <div class="context-progress-fill" id="contextProgressFill"></div>
+        </div>
+        <div id="statusMeta" class="status-meta"></div>
+      </div>
+      <div id="statusText">Ready.</div>
+    </div>
+  </footer>
+  -->
+
+  {{template "settings" .}}
+  {{template "onboarding" .}}
+
+  <!-- Global Help Dialog -->
+  <div id="helpDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content help-dialog">
+      <div class="dialog-header">
+        <h2>Workspace & Toolbar Guide</h2>
+        <button id="closeHelpDialog" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body" id="helpDialogContent"></div>
+    </div>
+  </div>
+
+  <!-- Sessions Dialog -->
+  <div id="sessionsDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content sessions-dialog">
+      <div class="dialog-header">
+        <h2>Sessions</h2>
+        <button id="closeSessionsDialog" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="sessions-actions">
+          <button id="newSessionBtn" class="primary">
+            <i data-lucide="plus"></i>
+            New Session
+          </button>
+          <button id="cancelSessionsDialog" class="ghost">
+            <i data-lucide="x"></i>
+            Cancel
+          </button>
+        </div>
+
+        <div class="current-session-section">
+          <h3>Current Session</h3>
+          <div id="currentSessionCard" class="session-card current">
+            <div class="session-info">
+              <div class="session-name" id="currentSessionNameDisplay">—</div>
+              <div class="session-meta">
+                <span id="currentSessionMessages">0 messages</span>
+                <span id="currentSessionUpdated">—</span>
+              </div>
+            </div>
+            <div class="session-actions">
+              <button id="clearSessionBtn" class="ghost">
+                <i data-lucide="trash-2"></i>
+                Clear History
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="all-sessions-section">
+          <h3>All Sessions</h3>
+          <div id="sessionListContainer" class="session-list-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Folder Picker Dialog -->
+  <div id="folderPickerDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content folder-browser-dialog">
+      <div class="dialog-header">
+        <h2>Add Workspace</h2>
+        <button id="closeFolderPicker" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="folder-browser">
+          <div class="breadcrumb" id="folderBreadcrumb"></div>
+          <div class="folder-list" id="folderList">
+            <div class="loading">Loading...</div>
+          </div>
+          <div class="current-selection">
+            <label>Selected Folder:</label>
+            <div id="selectedFolder" class="selected-folder-path">—</div>
+          </div>
+        </div>
+        <div id="folderPickerError" class="error-message" style="display: none;"></div>
+      </div>
+      <div class="form-actions">
+        <button id="cancelFolderPicker" class="ghost">Cancel</button>
+        <button id="confirmAddWorkspace" class="primary">Add Workspace</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Workspace Close Confirmation Dialog -->
+  <div id="closeWorkspaceDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h2>Close Workspace</h2>
+        <button id="cancelCloseWorkspace" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <p>Are you sure you want to close workspace <strong id="closeWorkspaceName">—</strong>?</p>
+        <p class="help-text">This will remove it from your workspace list. Your files and conversation history will not be deleted.</p>
+        <div class="form-actions">
+          <button id="cancelCloseWorkspaceBtn" class="ghost">Cancel</button>
+          <button id="confirmCloseWorkspace" class="primary danger">Close Workspace</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compaction History Dialog -->
+  <div id="compactionDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h2>Compaction History</h2>
+        <button id="closeCompactionDialog" class="dialog-close">✕</button>
+      </div>
+      <div id="compactionHistoryContent" class="dialog-body">
+        <p>Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js" defer></script>
+  <script src="/alpine.js" defer></script>
+  <script src="/lucide.js"></script>
+  <script src="/app.js" defer></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+# Environment / secrets
+.env
+
+# Build artifacts
+/bin/
+/tmp/
+/dist/
+/run/cando
+/cando
+/cando-*
+/simplagent
+*.exe
+*.out
+*.test
+*.tar.gz
+*.zip
+
+# Logs and state (legacy local copies)
+cando.log
+/conversations/
+plan.json
+plan.json.history.json
+memory.db
+memory.db-*
+.history
+/processes/
+oauth_tokens.json
+
+# Editor/OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Go coverage / tooling
+coverage.*
+*.coverprofile
+
+# Test files
+*_test.go.bak
+test_*.go.tmp

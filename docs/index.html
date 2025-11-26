@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cando - AI Coding Agent</title>
+    <meta name="description" content="AI coding agent with web UI, multi-workspace support, and sandboxed tool execution.">
+    <link rel="icon" type="image/png" href="../images/cando_logo.png">
+    <style>
+        :root {
+            --bg: #ffffff;
+            --bg-secondary: #f8fafc;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --border: #e2e8f0;
+            --success: #22c55e;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header */
+        header {
+            padding: 24px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text);
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .logo img {
+            height: 40px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 32px;
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text);
+        }
+
+        /* Hero */
+        .hero {
+            padding: 80px 0;
+            text-align: center;
+        }
+
+        .hero-logo {
+            width: 120px;
+            margin-bottom: 32px;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            max-width: 700px;
+            margin: 0 auto 40px;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--text-muted);
+        }
+
+        /* Install */
+        .install-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 700px;
+            margin: 0 auto 80px;
+        }
+
+        .install-section h3 {
+            margin-bottom: 16px;
+            font-size: 1.25rem;
+        }
+
+        .install-section code {
+            display: block;
+            background: #1e293b;
+            padding: 16px;
+            border-radius: 6px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            color: #4ade80;
+        }
+
+        .install-note {
+            margin-top: 16px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .install-note a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .install-note a:hover {
+            text-decoration: underline;
+        }
+
+        /* Screenshot */
+        .screenshot {
+            margin-bottom: 80px;
+            text-align: center;
+        }
+
+        .screenshot img {
+            max-width: 100%;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+        }
+
+        /* Features */
+        .features {
+            padding: 80px 0;
+        }
+
+        .features h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 48px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+        }
+
+        .feature-card h3 {
+            margin-bottom: 12px;
+            color: var(--accent);
+        }
+
+        .feature-card p {
+            color: var(--text-muted);
+        }
+
+        /* Gallery */
+        .gallery {
+            padding: 80px 0;
+        }
+
+        .gallery h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 16px;
+        }
+
+        .gallery > p {
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 48px;
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        .gallery-item {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .gallery-item:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+
+        .gallery-item h4 {
+            padding: 16px;
+            text-align: center;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 40px 0;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-bottom: 24px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .features-grid, .gallery-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <nav>
+                <a href="#" class="logo">
+                    <img src="../images/cando_logo.png" alt="Cando">
+                    Cando
+                </a>
+                <div class="nav-links">
+                    <a href="#features">Features</a>
+                    <a href="#gallery">Gallery</a>
+                    <a href="https://github.com/cutoken/cando">GitHub</a>
+                    <a href="https://github.com/cutoken/cando/blob/main/README.md">Docs</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <img src="../images/cando_logo.png" alt="Cando" class="hero-logo">
+                <h1>AI Coding Agent</h1>
+                <p>Web UI, multi-workspace support, and sandboxed tool execution. Run shell commands, edit files, and manage processes—all within isolated project workspaces.</p>
+                <div class="cta-buttons">
+                    <a href="#install" class="btn btn-primary">Install</a>
+                    <a href="https://github.com/cutoken/cando" class="btn btn-secondary">View on GitHub</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="install" class="container">
+            <div class="install-section">
+                <h3>Quick Install</h3>
+                <code>curl -fsSL https://raw.githubusercontent.com/cutoken/cando/main/install.sh | bash</code>
+                <p class="install-note">Detects your OS/arch and installs to ~/.local/bin. Or <a href="https://github.com/cutoken/cando/releases/latest">download manually</a>.</p>
+            </div>
+        </section>
+
+        <section class="container screenshot">
+            <img src="../images/cando-ui.png" alt="Cando Web UI">
+        </section>
+
+        <section id="features" class="features">
+            <div class="container">
+                <h2>Features</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <h3>Web UI</h3>
+                        <p>Session management, provider switching, thinking mode, plan view, and multiple themes.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Sandboxed Execution</h3>
+                        <p>Shell commands, file operations, and background processes run within isolated workspaces.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Multi-Provider</h3>
+                        <p>Supports Z.AI and OpenRouter. Access Claude, GPT-4, Qwen, and 100+ models.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Context Memory</h3>
+                        <p>Auto-summarizes long conversations, stores originals in SQLite, with recall and pin tools.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Cross-Platform</h3>
+                        <p>Runs on Linux, macOS, and Windows. Single binary, no dependencies.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Conversation Persistence</h3>
+                        <p>Auto-saves sessions. Resume anytime with --resume flag.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="gallery" class="gallery">
+            <div class="container">
+                <h2>Sample Projects</h2>
+                <p>Built with Cando</p>
+                <div class="gallery-grid">
+                    <div class="gallery-item">
+                        <img src="../images/pacman.png" alt="Pacman Game">
+                        <h4>Pacman Game</h4>
+                    </div>
+                    <div class="gallery-item">
+                        <img src="../images/milkyway-animation.png" alt="Milkyway Animation">
+                        <h4>Milkyway Animation</h4>
+                    </div>
+                    <div class="gallery-item">
+                        <img src="../images/moon-phases-animation.png" alt="Moon Phases">
+                        <h4>Moon Phases Animation</h4>
+                    </div>
+                    <div class="gallery-item">
+                        <img src="../images/basic-sculpting-tool.png" alt="Sculpting Tool">
+                        <h4>Sculpting Tool</h4>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="https://github.com/cutoken/cando">GitHub</a>
+                <a href="https://github.com/cutoken/cando/issues">Issues</a>
+                <a href="https://github.com/cutoken/cando/discussions">Discussions</a>
+            </div>
+            <p>Licensed under <a href="https://github.com/cutoken/cando/blob/main/LICENSE">AGPL-3.0</a></p>
+        </div>
+    </footer>
+</body>
+</html>

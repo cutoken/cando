@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(git describe --tags --always --dirty)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build binaries
+        run: make all
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Create release archives
+        run: |
+          cd dist
+          # Linux amd64
+          tar czf cando-linux-amd64.tar.gz cando-linux-amd64
+          # Linux arm64
+          tar czf cando-linux-arm64.tar.gz cando-linux-arm64
+          # macOS amd64
+          tar czf cando-darwin-amd64.tar.gz cando-darwin-amd64
+          # macOS arm64
+          tar czf cando-darwin-arm64.tar.gz cando-darwin-arm64
+          # Windows
+          zip cando-windows-amd64.zip cando-windows-amd64.exe
+
+          # Also create unarchived binaries for direct download
+          cp cando-linux-amd64 cando-linux-amd64-bin
+          cp cando-linux-arm64 cando-linux-arm64-bin
+          cp cando-darwin-amd64 cando-darwin-amd64-bin
+          cp cando-darwin-arm64 cando-darwin-arm64-bin
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz *.zip *-bin *.exe > checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/cando-linux-amd64-bin
+            dist/cando-linux-arm64-bin
+            dist/cando-darwin-amd64-bin
+            dist/cando-darwin-arm64-bin
+            dist/cando-windows-amd64.exe
+            dist/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,71 @@
+{{define "sessions"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sessions · Cando</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div class="sessions-page">
+    <div class="sessions-header">
+      <button id="backToChat" class="icon-btn">
+        <i data-lucide="arrow-left"></i>
+      </button>
+      <h1>Sessions</h1>
+      <div class="workspace-context">
+        <span class="workspace-label" id="sessionWorkspaceName">—</span>
+      </div>
+    </div>
+
+    <div class="sessions-content">
+      <div class="sessions-actions">
+        <button id="newSessionBtn" class="primary">
+          <i data-lucide="plus"></i>
+          New Session
+        </button>
+      </div>
+
+      <div class="current-session-section">
+        <h2>Current Session</h2>
+        <div id="currentSessionCard" class="session-card current">
+          <div class="session-info">
+            <div class="session-name" id="currentSessionNameDisplay">—</div>
+            <div class="session-meta">
+              <span id="currentSessionMessages">0 messages</span>
+              <span id="currentSessionUpdated">—</span>
+            </div>
+          </div>
+          <div class="session-actions">
+            <button id="clearSessionBtn" class="ghost">
+              <i data-lucide="trash-2"></i>
+              Clear History
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="all-sessions-section">
+        <h2>All Sessions</h2>
+        <div id="sessionListContainer" class="session-list-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/alpine.js" defer></script>
+  <script src="/lucide.js"></script>
+  <script src="/app.js" defer></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+      if (window.initSessionsPage) {
+        window.initSessionsPage();
+      }
+    });
+  </script>
+</body>
+</html>
+{{end}}

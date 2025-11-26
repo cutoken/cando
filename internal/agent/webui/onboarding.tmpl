@@ -1,0 +1,50 @@
+{{define "onboarding"}}
+<!-- Onboarding Dialog -->
+<div id="onboardingDialog" class="dialog-overlay" style="display: none;">
+  <div class="dialog-content">
+    <div class="dialog-header">
+      <h2>Welcome to Cando</h2>
+    </div>
+    <div class="dialog-body">
+      <p>To get started, please configure your AI provider.</p>
+
+      <div class="onboarding-form">
+        <div class="form-group">
+          <label>Select Provider</label>
+          <div class="provider-options">
+            <label class="radio-option">
+              <input type="radio" name="provider" value="zai" checked />
+              <div class="radio-label">
+                <strong>Z.AI</strong>
+                <span>Fast Chinese models (GLM-4, recommended)</span>
+              </div>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="provider" value="openrouter" />
+              <div class="radio-label">
+                <strong>OpenRouter</strong>
+                <span>Access to Claude, GPT-4, and more</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="apiKeyInput">API Key</label>
+          <input type="password" id="apiKeyInput" placeholder="Enter your API key" />
+          <small id="apiKeyHelp" class="help-text">
+            Get your Z.AI key at: <a href="https://z.ai" target="_blank">z.ai</a>
+          </small>
+        </div>
+
+        <div id="onboardingError" class="error-message" style="display: none;"></div>
+        <div id="onboardingSuccess" class="success-message" style="display: none;"></div>
+
+        <div class="form-actions">
+          <button id="saveCredentialsBtn" class="primary">Save & Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}

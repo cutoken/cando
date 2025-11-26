@@ -1,0 +1,304 @@
+package agent
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"os/signal"
+	"strings"
+	"time"
+
+	"simplagent/internal/config"
+	"simplagent/internal/contextprofile"
+	"simplagent/internal/llm"
+	"simplagent/internal/state"
+	"simplagent/internal/tooling"
+)
+
+// Agent wires the CLI, state machine, tools, and LLM client together.
+type Agent struct {
+	client  llm.Client
+	cfg     config.Config
+	states  *state.Manager
+	profile contextprofile.Profile
+	tools   *tooling.Registry
+	logger  *log.Logger
+}
+
+// New returns a fully wired Agent ready for the REPL loop.
+func New(client llm.Client, cfg config.Config, mgr *state.Manager, profile contextprofile.Profile, registry *tooling.Registry, logger *log.Logger) *Agent {
+	return &Agent{
+		client:  client,
+		cfg:     cfg,
+		states:  mgr,
+		profile: profile,
+		tools:   registry,
+		logger:  logger,
+	}
+}
+
+// Run starts the CLI prompt and blocks until the session finishes.
+func (a *Agent) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	defer signal.Stop(sigCh)
+
+	go func() {
+		var last time.Time
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-sigCh:
+				now := time.Now()
+				if !last.IsZero() && now.Sub(last) < 2*time.Second {
+					fmt.Println("\nReceived second Ctrl+C, exiting.")
+					cancel()
+					return
+				}
+				last = now
+				fmt.Println("\n(Press Ctrl+C again within 2s to exit)")
+			}
+		}
+	}()
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("Type ':help' for commands. Send prompts to talk to the agent. Use double Ctrl+C to exit.")
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		current := a.states.Current()
+		fmt.Printf("[%s] > ", current.Key())
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				fmt.Println()
+				return nil
+			}
+			if ctx.Err() != nil {
+				fmt.Println()
+				return nil
+			}
+			return fmt.Errorf("read input: %w", err)
+		}
+		normalized := strings.TrimSpace(input)
+		if normalized == "" {
+			continue
+		}
+
+		if strings.HasPrefix(normalized, ":") {
+			if exit := a.handleCommand(normalized); exit {
+				return nil
+			}
+			continue
+		}
+
+		response, finishReason, err := a.respond(ctx, normalized)
+		if err != nil {
+			a.logger.Printf("agent error: %v", err)
+			continue
+		}
+		if response != "" {
+			fmt.Printf("%s\n", response)
+		}
+		if finishReason == "stop" {
+			fmt.Println("(Model emitted stop; awaiting next prompt.)")
+		}
+	}
+}
+
+func (a *Agent) respond(ctx context.Context, userInput string) (string, string, error) {
+	conv := a.states.Current()
+	conv.Append(state.Message{Role: "user", Content: userInput})
+	if err := a.states.Save(conv); err != nil {
+		return "", "", fmt.Errorf("save conversation: %w", err)
+	}
+
+	for {
+		prepared, err := a.profile.Prepare(ctx, conv)
+		if err != nil {
+			a.logger.Printf("context profile prepare failed: %v", err)
+		}
+		if prepared.Mutated {
+			if err := a.states.Save(conv); err != nil {
+				return "", "", fmt.Errorf("save conversation: %w", err)
+			}
+		}
+		messages := prepared.Messages
+		if len(messages) == 0 {
+			messages = conv.Messages()
+		}
+
+		resp, err := a.client.Chat(ctx, llm.ChatRequest{
+			Model:       a.cfg.Model,
+			Messages:    messages,
+			Tools:       a.tools.Definitions(),
+			Temperature: a.cfg.Temperature,
+		})
+		if err != nil {
+			return "", "", fmt.Errorf("chat completion: %w", err)
+		}
+		if len(resp.Choices) == 0 {
+			return "", "", fmt.Errorf("no choices returned")
+		}
+
+		choice := resp.Choices[0]
+		conv.Append(choice.Message)
+		if err := a.states.Save(conv); err != nil {
+			return "", "", fmt.Errorf("save conversation: %w", err)
+		}
+
+		if len(choice.Message.ToolCalls) == 0 {
+			if mutated, err := a.profile.AfterResponse(ctx, conv); err != nil {
+				a.logger.Printf("context profile after-response failed: %v", err)
+			} else if mutated {
+				if err := a.states.Save(conv); err != nil {
+					return "", "", fmt.Errorf("save conversation: %w", err)
+				}
+			}
+			return choice.Message.Content, choice.FinishReason, nil
+		}
+
+		if err := a.processToolCalls(ctx, conv, choice.Message.ToolCalls); err != nil {
+			return "", "", err
+		}
+		if mutated, err := a.profile.AfterResponse(ctx, conv); err != nil {
+			a.logger.Printf("context profile after-response failed: %v", err)
+		} else if mutated {
+			if err := a.states.Save(conv); err != nil {
+				return "", "", fmt.Errorf("save conversation: %w", err)
+			}
+		}
+		// continue loop to let the model observe tool outputs
+	}
+}
+
+func (a *Agent) processToolCalls(ctx context.Context, conv *state.Conversation, calls []state.ToolCall) error {
+	for _, call := range calls {
+		tool, ok := a.tools.Lookup(call.Function.Name)
+		if !ok {
+			msg := fmt.Sprintf("tool %s not registered", call.Function.Name)
+			a.logger.Println(msg)
+			conv.Append(state.Message{Role: "tool", Name: call.Function.Name, Content: msg, ToolCallID: call.ID})
+			continue
+		}
+		var args map[string]any
+		if call.Function.Arguments != "" {
+			if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+				msg := fmt.Sprintf("invalid args for %s: %v", call.Function.Name, err)
+				a.logger.Println(msg)
+				conv.Append(state.Message{Role: "tool", Name: call.Function.Name, Content: msg, ToolCallID: call.ID})
+				continue
+			}
+		} else {
+			args = map[string]any{}
+		}
+		start := time.Now()
+		result, err := tool.Call(ctx, args)
+		if err != nil {
+			result = fmt.Sprintf("tool error: %v", err)
+			a.logger.Printf("[tool:%s] error after %s: %v", call.Function.Name, time.Since(start).Round(time.Millisecond), err)
+		} else {
+			a.logger.Printf("[tool:%s] %d bytes in %s", call.Function.Name, len(result), time.Since(start).Round(time.Millisecond))
+		}
+		conv.Append(state.Message{Role: "tool", Name: call.Function.Name, Content: result, ToolCallID: call.ID})
+		if err := a.states.Save(conv); err != nil {
+			return fmt.Errorf("save tool result: %w", err)
+		}
+	}
+	return nil
+}
+
+func (a *Agent) handleCommand(cmd string) bool {
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return false
+	}
+	switch parts[0] {
+	case ":help":
+		fmt.Println(`Commands:
+  :help          show this text
+  :states        list known conversation keys
+  :use <key>     switch to an existing state (creates if missing)
+  :new <key>     create and switch to a blank state
+  :clear         wipe the current state's history
+  :drop <key>    delete a stored state
+  :tools         list registered tools
+  :quit          exit the program`)
+	case ":states":
+		keys := a.states.ListKeys()
+		if len(keys) == 0 {
+			fmt.Println("No states yet. Use :new <name> to create one.")
+			return false
+		}
+		fmt.Printf("States: %s\n", strings.Join(keys, ", "))
+	case ":use":
+		if len(parts) < 2 {
+			fmt.Println(":use requires a key")
+			return false
+		}
+		key := parts[1]
+		if _, err := a.states.EnsureState(key); err != nil {
+			fmt.Println(err)
+			return false
+		}
+		fmt.Printf("Switched to %s\n", key)
+	case ":new":
+		if len(parts) < 2 {
+			fmt.Println(":new requires a key")
+			return false
+		}
+		key := parts[1]
+		if _, err := a.states.NewState(key); err != nil {
+			fmt.Println(err)
+			return false
+		}
+		fmt.Printf("Created new state %s\n", key)
+	case ":clear":
+		if err := a.states.ClearCurrent(); err != nil {
+			fmt.Printf("Clear failed: %v\n", err)
+			return false
+		}
+		fmt.Println("Cleared current state.")
+	case ":drop":
+		if len(parts) < 2 {
+			fmt.Println(":drop requires a key")
+			return false
+		}
+		key := parts[1]
+		if err := a.states.Delete(key); err != nil {
+			fmt.Println(err)
+			return false
+		}
+		fmt.Printf("Removed state %s\n", key)
+	case ":tools":
+		defs := a.tools.Definitions()
+		if len(defs) == 0 {
+			fmt.Println("No tools registered.")
+			return false
+		}
+		fmt.Println("Tools:")
+		for _, def := range defs {
+			fmt.Printf("  - %s: %s\n", def.Function.Name, def.Function.Description)
+		}
+	case ":quit", ":exit":
+		fmt.Println("Exiting per user request.")
+		return true
+	default:
+		fmt.Printf("Unknown command %s. Try :help\n", parts[0])
+	}
+	return false
+}
