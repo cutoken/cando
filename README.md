@@ -44,24 +44,13 @@ Move-Item cando.exe C:\Users\$env:USERNAME\bin\  # choose any folder on PATH
 
 > **Note:** If you launch the `.exe` from File Explorer, Windows SmartScreen will warn about an "unrecognized app." Choose "More info → Run anyway" once, or run it from PowerShell/CMD to skip the dialog. On macOS, running from Terminal bypasses Gatekeeper as well.
 
-### First run
+### Getting Started
 
-```bash
-cando
-```
-
-Output:
-```
-Starting Cando...
-→ Web UI: http://127.0.0.1:3737
-```
-
-Your browser opens automatically. On first run:
-
-1. If no credentials exist, configure your AI provider (Z.AI or OpenRouter) and API key
-2. Select a workspace folder for your project
-
-That's it. You're ready to use the agent.
+1. Run `cando`
+2. Open http://localhost:3737 (or the URL shown in terminal)
+3. Configure your AI provider (Z.AI or OpenRouter) and API key
+4. Select a workspace folder for your project
+5. Start coding
 
 Credentials are stored in `~/.cando/credentials.yaml`. Workspace data lives under `~/.cando/projects/`.
 
