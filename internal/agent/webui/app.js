@@ -42,6 +42,7 @@ const ui = {
   currentProjectName: null,
   newProjectMenuBtn: null,
   openFolderMenuBtn: null,
+  projectSettingsMenuBtn: null,
   // Chat UI elements (formerly session)
   chatPickerBtn: null,
   chatMenu: null,
@@ -100,6 +101,7 @@ async function initUI() {
   ui.currentProjectName = document.getElementById('currentProjectName');
   ui.newProjectMenuBtn = document.getElementById('newProjectMenuBtn');
   ui.openFolderMenuBtn = document.getElementById('openFolderMenuBtn');
+  ui.projectSettingsMenuBtn = document.getElementById('projectSettingsMenuBtn');
   // Chat UI elements
   ui.chatPickerBtn = document.getElementById('chatPickerBtn');
   ui.chatMenu = document.getElementById('chatMenu');
@@ -186,6 +188,14 @@ async function initUI() {
     ui.openFolderMenuBtn.addEventListener('click', () => {
       hideProjectDropdown();
       showFolderPicker();
+    });
+  }
+
+  // Project Settings button in dropdown menu
+  if (ui.projectSettingsMenuBtn) {
+    ui.projectSettingsMenuBtn.addEventListener('click', () => {
+      hideProjectDropdown();
+      showProjectSettingsDialog();
     });
   }
 
@@ -427,7 +437,7 @@ function getHelpGuideHTML() {
         <div class="help-row">
           <span class="help-icon-inline">📁</span>
           <span class="help-label">Project ▼</span>
-          <span class="help-desc">Switch or manage projects</span>
+          <span class="help-desc">Switch projects, open settings</span>
         </div>
         <div class="help-row">
           <span class="help-icon-inline">💬</span>
@@ -446,6 +456,7 @@ function getHelpGuideHTML() {
           <li><strong>Project</strong> = a folder on your computer</li>
           <li><strong>Chat</strong> = a conversation within a project</li>
           <li>Each project keeps its own chat history</li>
+          <li><strong>Project Settings</strong> = per-project instructions sent with every message</li>
         </ul>
       </div>
       <div class="help-section">
@@ -1681,9 +1692,15 @@ async function mutateState(payload) {
 function renderMarkdown(text) {
   const source = text || '';
   if (window.marked) {
-    const html = window.marked.parse(source, { breaks: true });
+    // Configure renderer to open links in new tab
+    const renderer = new marked.Renderer();
+    renderer.link = function(href, title, text) {
+      const titleAttr = title ? ` title="${title}"` : '';
+      return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+    };
+    const html = window.marked.parse(source, { breaks: true, renderer: renderer });
     if (window.DOMPurify) {
-      return window.DOMPurify.sanitize(html);
+      return window.DOMPurify.sanitize(html, { ADD_ATTR: ['target'] });
     }
     return html;
   }
@@ -4646,6 +4663,85 @@ function showFolderPickerForNewProject(callback) {
     if (selectedPath) {
       callback(selectedPath);
     }
+  });
+}
+
+// ========== PROJECT SETTINGS DIALOG ==========
+
+async function showProjectSettingsDialog() {
+  const dialog = document.getElementById('projectSettingsDialog');
+  const instructionsInput = document.getElementById('projectInstructionsInput');
+  const saveBtn = document.getElementById('saveProjectSettings');
+  const cancelBtn = document.getElementById('cancelProjectSettings');
+  const closeBtn = document.getElementById('closeProjectSettings');
+
+  if (!dialog || !instructionsInput) return;
+
+  // Check if we have a project selected
+  if (!workspaceState.currentWorkspace) {
+    alert('Please select a project first');
+    return;
+  }
+
+  // Load current instructions
+  try {
+    const res = await fetchWithWorkspace('/api/project/instructions');
+    if (res.ok) {
+      const data = await res.json();
+      instructionsInput.value = data.instructions || '';
+    }
+  } catch (err) {
+    console.error('Failed to load project instructions:', err);
+  }
+
+  // Show dialog
+  dialog.style.display = 'flex';
+
+  // Handle save
+  const handleSave = async () => {
+    try {
+      const res = await fetchWithWorkspace('/api/project/instructions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instructions: instructionsInput.value }),
+      });
+      if (res.ok) {
+        closeDialog();
+      } else {
+        const errorText = await res.text();
+        alert('Failed to save: ' + errorText);
+      }
+    } catch (err) {
+      console.error('Failed to save project instructions:', err);
+      alert('Failed to save project instructions');
+    }
+  };
+
+  const closeDialog = () => {
+    dialog.style.display = 'none';
+    if (saveBtn) saveBtn.removeEventListener('click', handleSave);
+    if (cancelBtn) cancelBtn.removeEventListener('click', closeDialog);
+    if (closeBtn) closeBtn.removeEventListener('click', closeDialog);
+  };
+
+  // Attach event listeners
+  if (saveBtn) saveBtn.addEventListener('click', handleSave);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeDialog);
+  if (closeBtn) closeBtn.addEventListener('click', closeDialog);
+
+  // Handle tab switching within project settings (for future tabs)
+  const tabBtns = dialog.querySelectorAll('.tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabName = btn.dataset.tab;
+      // Update active tab button
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // Update active pane
+      dialog.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === `tab-${tabName}`);
+      });
+    });
   });
 }
 

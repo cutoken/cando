@@ -117,6 +117,7 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/browse", s.handleBrowse)
 	mux.HandleFunc("/api/folder/create", s.handleFolderCreate)
 	mux.HandleFunc("/api/branch", s.handleBranch)
+	mux.HandleFunc("/api/project/instructions", s.handleProjectInstructions)
 
 	server := &http.Server{
 		Addr:    actualAddr,
@@ -1702,4 +1703,64 @@ func (s *webServer) handleBranch(w http.ResponseWriter, r *http.Request) {
 		"new_session_key": newKey,
 		"status":          "branched",
 	})
+}
+
+// handleProjectInstructions handles GET/POST for project-level instructions
+func (s *webServer) handleProjectInstructions(w http.ResponseWriter, r *http.Request) {
+	workspacePath := r.Header.Get("X-Workspace")
+	if workspacePath == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace header required")
+		return
+	}
+
+	// Get project storage root
+	storageRoot, err := ProjectStorageRoot(workspacePath)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to get storage root: %v", err))
+		return
+	}
+
+	instructionsPath := filepath.Join(storageRoot, "instructions.txt")
+
+	switch r.Method {
+	case http.MethodGet:
+		// Read instructions file
+		content, err := os.ReadFile(instructionsPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// No instructions file yet, return empty
+				s.writeJSON(w, r, map[string]string{"instructions": ""})
+				return
+			}
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to read instructions: %v", err))
+			return
+		}
+		s.writeJSON(w, r, map[string]string{"instructions": string(content)})
+
+	case http.MethodPost:
+		var req struct {
+			Instructions string `json:"instructions"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		// Ensure storage directory exists
+		if err := os.MkdirAll(storageRoot, 0o755); err != nil {
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create storage dir: %v", err))
+			return
+		}
+
+		// Write instructions file
+		if err := os.WriteFile(instructionsPath, []byte(req.Instructions), 0o644); err != nil {
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to write instructions: %v", err))
+			return
+		}
+
+		s.writeJSON(w, r, map[string]string{"status": "saved"})
+
+	default:
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }

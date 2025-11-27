@@ -79,6 +79,41 @@ type WorkspaceContext struct {
 	root    string
 }
 
+// loadProjectInstructions reads the project instructions file for a workspace.
+// Returns empty string if no instructions file exists.
+func loadProjectInstructions(workspaceRoot string) string {
+	storageRoot, err := ProjectStorageRoot(workspaceRoot)
+	if err != nil {
+		return ""
+	}
+	instructionsPath := filepath.Join(storageRoot, "instructions.txt")
+	content, err := os.ReadFile(instructionsPath)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(content))
+}
+
+// injectProjectInstructions modifies messages to append project instructions to the system message
+func injectProjectInstructions(messages []state.Message, instructions string) []state.Message {
+	if instructions == "" || len(messages) == 0 {
+		return messages
+	}
+
+	// Make a copy to avoid modifying the original
+	result := make([]state.Message, len(messages))
+	copy(result, messages)
+
+	// Find and modify the system message (usually the first one)
+	for i, msg := range result {
+		if msg.Role == "system" {
+			result[i].Content = msg.Content + "\n\n---\nProject Instructions:\n" + instructions
+			break
+		}
+	}
+	return result
+}
+
 // Agent wires the CLI, state machine, tools, and LLM client together.
 type Agent struct {
 	client           llm.Client
@@ -591,7 +626,7 @@ func (a *Agent) respondWithCallbacksForWorkspace(ctx context.Context, userInput 
 		defer emitter.SetCompactionCallback(nil)
 	}
 
-	return a.respondLoop(ctx, conv, wsCtx.states, wsCtx.tools, wsCtx.profile, callback)
+	return a.respondLoop(ctx, conv, wsCtx.states, wsCtx.tools, wsCtx.profile, callback, wsCtx.root)
 }
 
 func (a *Agent) respondWithCallbacks(ctx context.Context, userInput string, callback StreamCallback) (string, string, error) {
@@ -607,10 +642,13 @@ func (a *Agent) respondWithCallbacks(ctx context.Context, userInput string, call
 		defer emitter.SetCompactionCallback(nil)
 	}
 
-	return a.respondLoop(ctx, conv, a.states, a.tools, a.profile, callback)
+	return a.respondLoop(ctx, conv, a.states, a.tools, a.profile, callback, "")
 }
 
-func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, stateManager *state.Manager, tools *tooling.Registry, profile contextprofile.Profile, callback StreamCallback) (string, string, error) {
+func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, stateManager *state.Manager, tools *tooling.Registry, profile contextprofile.Profile, callback StreamCallback, workspaceRoot string) (string, string, error) {
+	// Load project instructions once per conversation turn
+	projectInstructions := loadProjectInstructions(workspaceRoot)
+
 	for {
 		prepared, err := profile.Prepare(ctx, conv)
 		if err != nil {
@@ -625,6 +663,9 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 		if len(messages) == 0 {
 			messages = conv.Messages()
 		}
+
+		// Inject project instructions into system message
+		messages = injectProjectInstructions(messages, projectInstructions)
 
 		// Inject hidden ultrathink message when force thinking is enabled
 		// Only inject for user messages, not for tool call response rounds

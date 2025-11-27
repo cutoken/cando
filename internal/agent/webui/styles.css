@@ -3157,6 +3157,69 @@ button.danger:hover {
   flex-shrink: 0;
 }
 
+/* ========== PROJECT SETTINGS DIALOG ========== */
+.project-settings-dialog {
+  max-width: 600px;
+  width: 90%;
+}
+
+.project-settings-dialog .dialog-body {
+  padding: 0;
+}
+
+.project-settings-dialog .tabs {
+  padding: 0 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.project-settings-dialog .tab-content {
+  padding: 1.5rem;
+}
+
+.project-settings-dialog .tab-section h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.project-settings-dialog .tab-section .help-text {
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.project-instructions-textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.project-instructions-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.project-settings-dialog .form-actions {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+/* Project menu settings section */
+.project-menu-settings {
+  border-top: 1px solid var(--border);
+}
+
 /* ========== FOLDER BROWSER ========== */
 .folder-browser-dialog .dialog-content {
   max-width: 700px;

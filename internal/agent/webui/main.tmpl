@@ -214,6 +214,38 @@
     </div>
   </div>
 
+  <!-- Project Settings Dialog -->
+  <div id="projectSettingsDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content project-settings-dialog">
+      <div class="dialog-header">
+        <h2>Project Settings</h2>
+        <button id="closeProjectSettings" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="project-instructions">Instructions</button>
+          <!-- Future tabs can be added here -->
+        </div>
+
+        <div class="tab-content">
+          <!-- Instructions Tab -->
+          <div id="tab-project-instructions" class="tab-pane active">
+            <div class="tab-section">
+              <h3>Project Instructions</h3>
+              <p class="help-text">These instructions are sent with every message in this project.</p>
+              <textarea id="projectInstructionsInput" class="project-instructions-textarea" placeholder="Example: Always use TypeScript. Follow the existing code style. Prefer functional components."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button id="cancelProjectSettings" class="ghost">Cancel</button>
+          <button id="saveProjectSettings" class="primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Compaction History Dialog -->
   <div id="compactionDialog" class="dialog-overlay" style="display: none;">
     <div class="dialog-content">
