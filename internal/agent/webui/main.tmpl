@@ -56,44 +56,44 @@
   <div id="helpDialog" class="dialog-overlay" style="display: none;">
     <div class="dialog-content help-dialog">
       <div class="dialog-header">
-        <h2>Workspace & Toolbar Guide</h2>
+        <h2>Projects & Chats Guide</h2>
         <button id="closeHelpDialog" class="dialog-close">✕</button>
       </div>
       <div class="dialog-body" id="helpDialogContent"></div>
     </div>
   </div>
 
-  <!-- Sessions Dialog -->
-  <div id="sessionsDialog" class="dialog-overlay" style="display: none;">
-    <div class="dialog-content sessions-dialog">
+  <!-- Chats Dialog -->
+  <div id="chatsDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content chats-dialog">
       <div class="dialog-header">
-        <h2>Sessions</h2>
-        <button id="closeSessionsDialog" class="dialog-close">✕</button>
+        <h2>Chats</h2>
+        <button id="closeChatsDialog" class="dialog-close">✕</button>
       </div>
       <div class="dialog-body">
-        <div class="sessions-actions">
-          <button id="newSessionBtn" class="primary">
+        <div class="chats-actions">
+          <button id="newChatDialogBtn" class="primary">
             <i data-lucide="plus"></i>
-            New Session
+            New Chat
           </button>
-          <button id="cancelSessionsDialog" class="ghost">
+          <button id="cancelChatsDialog" class="ghost">
             <i data-lucide="x"></i>
             Cancel
           </button>
         </div>
 
-        <div class="current-session-section">
-          <h3>Current Session</h3>
-          <div id="currentSessionCard" class="session-card current">
-            <div class="session-info">
-              <div class="session-name" id="currentSessionNameDisplay">—</div>
-              <div class="session-meta">
-                <span id="currentSessionMessages">0 messages</span>
-                <span id="currentSessionUpdated">—</span>
+        <div class="current-chat-section">
+          <h3>Current Chat</h3>
+          <div id="currentChatCard" class="chat-card current">
+            <div class="chat-info">
+              <div class="chat-name" id="currentChatNameDisplay">—</div>
+              <div class="chat-meta">
+                <span id="currentChatMessages">0 messages</span>
+                <span id="currentChatUpdated">—</span>
               </div>
             </div>
-            <div class="session-actions">
-              <button id="clearSessionBtn" class="ghost">
+            <div class="chat-actions">
+              <button id="clearChatBtn" class="ghost">
                 <i data-lucide="trash-2"></i>
                 Clear History
               </button>
@@ -101,9 +101,9 @@
           </div>
         </div>
 
-        <div class="all-sessions-section">
-          <h3>All Sessions</h3>
-          <div id="sessionListContainer" class="session-list-grid"></div>
+        <div class="all-chats-section">
+          <h3>All Chats</h3>
+          <div id="chatListContainer" class="chat-list-grid"></div>
         </div>
       </div>
     </div>
@@ -113,17 +113,23 @@
   <div id="folderPickerDialog" class="dialog-overlay" style="display: none;">
     <div class="dialog-content folder-browser-dialog">
       <div class="dialog-header">
-        <h2>Add Workspace</h2>
+        <h2>Open Folder</h2>
         <button id="closeFolderPicker" class="dialog-close">✕</button>
       </div>
       <div class="dialog-body">
         <div class="folder-browser">
-          <div class="breadcrumb" id="folderBreadcrumb"></div>
+          <div class="folder-browser-toolbar">
+            <div class="breadcrumb" id="folderBreadcrumb"></div>
+            <button id="createNewFolderBtn" class="ghost new-folder-btn" title="Create New Folder">
+              <i data-lucide="folder-plus"></i>
+              <span>New Folder</span>
+            </button>
+          </div>
           <div class="folder-list" id="folderList">
             <div class="loading">Loading...</div>
           </div>
           <div class="current-selection">
-            <label>Selected Folder:</label>
+            <label>Current Folder:</label>
             <div id="selectedFolder" class="selected-folder-path">—</div>
           </div>
         </div>
@@ -131,24 +137,52 @@
       </div>
       <div class="form-actions">
         <button id="cancelFolderPicker" class="ghost">Cancel</button>
-        <button id="confirmAddWorkspace" class="primary">Add Workspace</button>
+        <button id="confirmAddWorkspace" class="primary">Use This Folder</button>
       </div>
     </div>
   </div>
 
-  <!-- Workspace Close Confirmation Dialog -->
-  <div id="closeWorkspaceDialog" class="dialog-overlay" style="display: none;">
-    <div class="dialog-content">
+  <!-- New Project Dialog -->
+  <div id="newProjectDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content new-project-dialog">
       <div class="dialog-header">
-        <h2>Close Workspace</h2>
-        <button id="cancelCloseWorkspace" class="dialog-close">✕</button>
+        <h2>New Project</h2>
+        <button id="closeNewProjectDialog" class="dialog-close">✕</button>
       </div>
       <div class="dialog-body">
-        <p>Are you sure you want to close workspace <strong id="closeWorkspaceName">—</strong>?</p>
-        <p class="help-text">This will remove it from your workspace list. Your files and conversation history will not be deleted.</p>
+        <div class="form-group">
+          <label for="newProjectName">Project Name</label>
+          <input type="text" id="newProjectName" placeholder="my-project" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <div class="location-picker">
+            <span id="newProjectPath" class="project-path-display">/home/user/my-project</span>
+            <button id="changeProjectLocation" class="ghost">Change</button>
+          </div>
+        </div>
+        <div id="newProjectError" class="error-message" style="display: none;"></div>
+      </div>
+      <div class="form-actions">
+        <button id="cancelNewProject" class="ghost">Cancel</button>
+        <button id="confirmNewProject" class="primary">Create Project</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Project Close Confirmation Dialog -->
+  <div id="closeProjectDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h2>Close Project</h2>
+        <button id="cancelCloseProject" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <p>Are you sure you want to close project <strong id="closeProjectName">—</strong>?</p>
+        <p class="help-text">This will remove it from your project list. Your files and chat history will not be deleted.</p>
         <div class="form-actions">
-          <button id="cancelCloseWorkspaceBtn" class="ghost">Cancel</button>
-          <button id="confirmCloseWorkspace" class="primary danger">Close Workspace</button>
+          <button id="cancelCloseProjectBtn" class="ghost">Cancel</button>
+          <button id="confirmCloseProject" class="primary danger">Close Project</button>
         </div>
       </div>
     </div>

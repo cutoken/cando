@@ -115,6 +115,7 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/workspace/switch", s.handleWorkspaceSwitch)
 	mux.HandleFunc("/api/workspace/remove", s.handleWorkspaceRemove)
 	mux.HandleFunc("/api/browse", s.handleBrowse)
+	mux.HandleFunc("/api/folder/create", s.handleFolderCreate)
 	mux.HandleFunc("/api/branch", s.handleBranch)
 
 	server := &http.Server{
@@ -1521,6 +1522,64 @@ func (s *webServer) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		"current":     absPath,
 		"parent":      parentPath,
 		"directories": dirs,
+	})
+}
+
+// handleFolderCreate creates a new directory at the specified path
+func (s *webServer) handleFolderCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid request: %v", err))
+		return
+	}
+
+	if req.Path == "" {
+		s.respondError(w, r, http.StatusBadRequest, "path is required")
+		return
+	}
+
+	// Clean and validate path
+	absPath, err := filepath.Abs(req.Path)
+	if err != nil {
+		s.respondError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid path: %v", err))
+		return
+	}
+
+	// Security check: prevent creating folders outside user home or absolute paths with ..
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, "failed to get home directory")
+		return
+	}
+	if !strings.HasPrefix(absPath, homeDir) && !strings.HasPrefix(absPath, "/tmp") {
+		s.respondError(w, r, http.StatusForbidden, "cannot create folders outside home directory")
+		return
+	}
+
+	// Check if path already exists
+	if _, err := os.Stat(absPath); err == nil {
+		s.respondError(w, r, http.StatusConflict, "path already exists")
+		return
+	}
+
+	// Create directory with standard permissions
+	if err := os.MkdirAll(absPath, 0755); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+
+	s.logger.Printf("Created folder: %s", absPath)
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"path":   absPath,
+		"status": "created",
 	})
 }
 

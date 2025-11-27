@@ -2,11 +2,50 @@
 <main class="conversation-panel">
   <!-- Message Toolbar -->
   <div class="message-toolbar">
-    <button id="sessionPickerBtn" class="session-picker-btn" title="Session Management">
-      <i data-lucide="list"></i>
-      <span id="currentSessionLabel" class="session-label">Session</span>
-      <i data-lucide="chevron-down" class="chevron"></i>
-    </button>
+    <!-- Project Picker: [📁 name ▼] -->
+    <div class="project-picker-container">
+      <button id="projectPickerBtn" class="project-picker-btn" title="Switch Project">
+        <i data-lucide="folder" class="picker-icon"></i>
+        <span id="currentProjectName" class="picker-label">No Project</span>
+        <i data-lucide="chevron-down" class="chevron"></i>
+      </button>
+      <!-- Project Dropdown Menu -->
+      <div id="projectMenu" class="project-dropdown-menu hidden">
+        <div class="project-menu-section">
+          <div id="projectMenuList" class="project-menu-items"></div>
+        </div>
+        <div class="project-menu-section project-menu-actions">
+          <button id="newProjectMenuBtn" class="project-menu-action">
+            <i data-lucide="folder-plus"></i>
+            <span>New Project</span>
+          </button>
+          <button id="openFolderMenuBtn" class="project-menu-action">
+            <i data-lucide="folder-open"></i>
+            <span>Open Folder</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Controls: [ 💬 chat-1 ▼ | + ] -->
+    <div class="chat-controls-group">
+      <div class="chat-picker-container">
+        <button id="chatPickerBtn" class="chat-picker-btn" title="Switch Chat">
+          <i data-lucide="message-circle" class="picker-icon"></i>
+          <span id="currentChatLabel" class="picker-label">chat-1</span>
+          <i data-lucide="chevron-down" class="chevron"></i>
+        </button>
+        <!-- Chat Dropdown Menu -->
+        <div id="chatMenu" class="chat-dropdown-menu hidden">
+          <div id="chatMenuList" class="chat-menu-items"></div>
+        </div>
+      </div>
+      <div class="chat-controls-divider"></div>
+      <button id="newChatBtn" class="new-chat-btn" title="New Chat">
+        <i data-lucide="plus"></i>
+      </button>
+    </div>
+
     <div id="messageBanner" class="feed-banner hidden"></div>
   </div>
 
@@ -14,29 +53,6 @@
 
   <div id="thinkingIndicator" class="thinking-indicator">
     <div class="thinking-content">
-      <div class="workspace-status-container">
-        <button type="button" id="workspaceBtn" class="workspace-status-btn" title="Switch Workspace">
-          <span id="workspaceLabel" class="workspace-status-label"></span>
-          <i data-lucide="chevron-up"></i>
-        </button>
-        <!-- Workspace Dropdown Menu -->
-        <div id="workspaceMenu" class="workspace-dropdown-menu hidden">
-          <div class="workspace-menu-section">
-            <div class="workspace-menu-header">Open Workspaces</div>
-            <div id="workspaceMenuOpen" class="workspace-menu-items"></div>
-          </div>
-          <div class="workspace-menu-section">
-            <div class="workspace-menu-header">Recent</div>
-            <div id="workspaceMenuRecent" class="workspace-menu-items"></div>
-          </div>
-          <div class="workspace-menu-section">
-            <button id="addWorkspaceMenuBtn" class="workspace-menu-add">
-              <i data-lucide="folder-plus"></i>
-              <span>Open Folder</span>
-            </button>
-          </div>
-        </div>
-      </div>
       <span class="thinking-label">Cando</span>
       <div class="thinking-dots">
         <span></span><span></span><span></span>

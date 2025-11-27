@@ -35,12 +35,19 @@ const ui = {
   planDropdownTitle: null,
   planDropdownSteps: null,
   thinkingModelInfo: null,
-  workspaceBtn: null,
-  workspaceLabel: null,
-  workspaceMenu: null,
-  workspaceMenuOpen: null,
-  workspaceMenuRecent: null,
-  addWorkspaceMenuBtn: null,
+  // Project UI elements (formerly workspace)
+  projectPickerBtn: null,
+  projectMenu: null,
+  projectMenuList: null,
+  currentProjectName: null,
+  newProjectMenuBtn: null,
+  openFolderMenuBtn: null,
+  // Chat UI elements (formerly session)
+  chatPickerBtn: null,
+  chatMenu: null,
+  chatMenuList: null,
+  currentChatLabel: null,
+  newChatBtn: null,
   helpBtn: null,
 };
 
@@ -86,12 +93,19 @@ async function initUI() {
   ui.planDropdownTitle = document.getElementById('planDropdownTitle');
   ui.planDropdownSteps = document.getElementById('planDropdownSteps');
   ui.thinkingModelInfo = document.getElementById('thinkingModelInfo');
-  ui.workspaceBtn = document.getElementById('workspaceBtn');
-  ui.workspaceLabel = document.getElementById('workspaceLabel');
-  ui.workspaceMenu = document.getElementById('workspaceMenu');
-  ui.workspaceMenuOpen = document.getElementById('workspaceMenuOpen');
-  ui.workspaceMenuRecent = document.getElementById('workspaceMenuRecent');
-  ui.addWorkspaceMenuBtn = document.getElementById('addWorkspaceMenuBtn');
+  // Project UI elements
+  ui.projectPickerBtn = document.getElementById('projectPickerBtn');
+  ui.projectMenu = document.getElementById('projectMenu');
+  ui.projectMenuList = document.getElementById('projectMenuList');
+  ui.currentProjectName = document.getElementById('currentProjectName');
+  ui.newProjectMenuBtn = document.getElementById('newProjectMenuBtn');
+  ui.openFolderMenuBtn = document.getElementById('openFolderMenuBtn');
+  // Chat UI elements
+  ui.chatPickerBtn = document.getElementById('chatPickerBtn');
+  ui.chatMenu = document.getElementById('chatMenu');
+  ui.chatMenuList = document.getElementById('chatMenuList');
+  ui.currentChatLabel = document.getElementById('currentChatLabel');
+  ui.newChatBtn = document.getElementById('newChatBtn');
   ui.helpBtn = document.getElementById('helpBtn');
 
   ui.promptForm.addEventListener('submit', async (e) => {
@@ -143,27 +157,58 @@ async function initUI() {
     }
   });
 
-  // Workspace dropdown in CANDO bar
-  if (ui.workspaceBtn) {
-    ui.workspaceBtn.addEventListener('click', (e) => {
+  // Project dropdown in toolbar
+  if (ui.projectPickerBtn) {
+    ui.projectPickerBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleWorkspaceDropdown();
+      toggleProjectDropdown();
     });
   }
 
-  // Close workspace dropdown when clicking outside
+  // Close project dropdown when clicking outside
   document.addEventListener('click', (e) => {
-    if (!ui.workspaceMenu || ui.workspaceMenu.classList.contains('hidden')) return;
-    if (!ui.workspaceMenu.contains(e.target) && !ui.workspaceBtn.contains(e.target)) {
-      hideWorkspaceDropdown();
+    if (!ui.projectMenu || ui.projectMenu.classList.contains('hidden')) return;
+    if (!ui.projectMenu.contains(e.target) && !ui.projectPickerBtn.contains(e.target)) {
+      hideProjectDropdown();
     }
   });
 
-  // Add workspace button in dropdown menu
-  if (ui.addWorkspaceMenuBtn) {
-    ui.addWorkspaceMenuBtn.addEventListener('click', () => {
-      hideWorkspaceDropdown();
+  // New Project button in dropdown menu
+  if (ui.newProjectMenuBtn) {
+    ui.newProjectMenuBtn.addEventListener('click', () => {
+      hideProjectDropdown();
+      showNewProjectDialog();
+    });
+  }
+
+  // Open Folder button in dropdown menu
+  if (ui.openFolderMenuBtn) {
+    ui.openFolderMenuBtn.addEventListener('click', () => {
+      hideProjectDropdown();
       showFolderPicker();
+    });
+  }
+
+  // Chat dropdown in toolbar
+  if (ui.chatPickerBtn) {
+    ui.chatPickerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleChatDropdown();
+    });
+  }
+
+  // Close chat dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!ui.chatMenu || ui.chatMenu.classList.contains('hidden')) return;
+    if (!ui.chatMenu.contains(e.target) && !ui.chatPickerBtn.contains(e.target)) {
+      hideChatDropdown();
+    }
+  });
+
+  // New Chat button in toolbar
+  if (ui.newChatBtn) {
+    ui.newChatBtn.addEventListener('click', () => {
+      createNewChat();
     });
   }
 
@@ -209,7 +254,7 @@ async function initUI() {
   // Initialize additional components
   initSettings();
   initAutocomplete();
-  initWorkspaces();
+  initProjects();
   updateStatusBar();
 
   document.addEventListener('keydown', handleGlobalKeydown);
@@ -248,14 +293,18 @@ function render() {
   updateStatusMeta();
   updateThinkingModelInfo();
   updateStatusBar();
-  updateWorkspaceUI();
-  const sessionBtn = document.getElementById('sessionPickerBtn');
-  const hasWorkspace = !!appState.data.workspace;
-  if (sessionBtn) {
-    sessionBtn.classList.toggle('hidden', !hasWorkspace);
+  updateProjectUI();
+  updateChatUI();
+  const hasProject = !!appState.data.workspace;
+  // Show/hide chat controls based on project selection
+  if (ui.chatPickerBtn) {
+    ui.chatPickerBtn.classList.toggle('hidden', !hasProject);
+  }
+  if (ui.newChatBtn) {
+    ui.newChatBtn.classList.toggle('hidden', !hasProject);
   }
   if (ui.promptInput) {
-    if (hasWorkspace) {
+    if (hasProject) {
       ui.promptInput.disabled = false;
       ui.promptInput.readOnly = !!appState.busy;
       ui.promptInput.placeholder = 'Ask Cando anything… (Enter to send, Shift+Enter for new line)';
@@ -263,11 +312,11 @@ function render() {
       ui.promptInput.value = '';
       ui.promptInput.disabled = true;
       ui.promptInput.readOnly = true;
-      ui.promptInput.placeholder = 'Select a workspace to get started';
+      ui.promptInput.placeholder = 'Select a project to get started';
     }
   }
   if (ui.sendBtn && !appState.busy) {
-    ui.sendBtn.disabled = !hasWorkspace;
+    ui.sendBtn.disabled = !hasProject;
   }
   ui.thinkingToggle.textContent = appState.data.thinking ? 'On' : 'Off';
   ui.thinkingToggle.classList.toggle('active', appState.data.thinking);
@@ -278,13 +327,13 @@ function render() {
   if (ui.systemPromptInput && ui.systemPromptInput.value !== appState.data.system_prompt) {
     ui.systemPromptInput.value = appState.data.system_prompt || '';
   }
-  ui.cancelBtn.disabled = !appState.data.running || !hasWorkspace;
+  ui.cancelBtn.disabled = !appState.data.running || !hasProject;
 }
 
 function renderMessages() {
   ui.messages.innerHTML = '';
   if (!appState.data?.workspace) {
-    renderWorkspaceEmptyState();
+    renderProjectEmptyState();
     return;
   }
   const total = appState.data.messages.length;
@@ -349,35 +398,36 @@ function scrollMessagesToBottom() {
   setTimeout(doScroll, 150);
 }
 
-function renderWorkspaceEmptyState() {
-  ui.messages.innerHTML = getWorkspaceGuideHTML();
-  wireWorkspaceGuideActions(ui.messages);
+function renderProjectEmptyState() {
+  ui.messages.innerHTML = getProjectGuideHTML();
+  wireProjectGuideActions(ui.messages);
 }
 
-function getWorkspaceGuideHTML() {
+function getProjectGuideHTML() {
   return `
-    <div class="workspace-empty">
-      <div class="workspace-empty-card">
-        <div class="workspace-guide">
-          <div class="workspace-guide-main">
-            <div class="workspace-empty-icon">📂</div>
-            <h2>Select a workspace to get started</h2>
-            <p>Workspaces keep your conversations, files, and sessions organized per project.</p>
-            <button class="primary" data-help-action="select-workspace">Select Workspace</button>
+    <div class="project-empty">
+      <div class="project-empty-card">
+        <div class="project-guide">
+          <div class="project-guide-main">
+            <div class="project-empty-icon">📂</div>
+            <h2>Select a project to get started</h2>
+            <p>Projects keep your chats, files, and history organized per folder.</p>
+            <button class="primary" data-help-action="select-project">Open Project</button>
+            <button class="ghost" data-help-action="new-project">New Project</button>
           </div>
-          <div class="workspace-empty-help">
+          <div class="project-empty-help">
             <div class="help-item">
               <div class="help-icon">+</div>
               <div class="help-body">
-                <h3>Add Workspace</h3>
-                <p>Click the + button to register a new folder or reopen a recent project.</p>
+                <h3>New Project</h3>
+                <p>Create a new project folder or open an existing one from the Projects menu.</p>
               </div>
             </div>
             <div class="help-item">
               <div class="help-icon">⌄</div>
               <div class="help-body">
-                <h3>Workspaces Menu</h3>
-                <p>Use the “Workspaces” dropdown to jump between open or recently closed projects.</p>
+                <h3>Projects Menu</h3>
+                <p>Use the "Projects" dropdown to switch between open or recent projects.</p>
               </div>
             </div>
             <div class="help-item">
@@ -399,7 +449,7 @@ function getWorkspaceGuideHTML() {
               <div class="help-icon">?</div>
               <div class="help-body">
                 <h3>Need Help?</h3>
-                <p>Use the ? button in the status bar to view this guide anytime.</p>
+                <p>Use the ? button to view this guide anytime.</p>
               </div>
             </div>
           </div>
@@ -409,12 +459,19 @@ function getWorkspaceGuideHTML() {
   `;
 }
 
-function wireWorkspaceGuideActions(root, afterAction) {
+function wireProjectGuideActions(root, afterAction) {
   if (!root) return;
-  const selectBtn = root.querySelector('[data-help-action="select-workspace"]');
+  const selectBtn = root.querySelector('[data-help-action="select-project"]');
   if (selectBtn) {
     selectBtn.addEventListener('click', () => {
       showFolderPicker();
+      if (typeof afterAction === 'function') afterAction();
+    });
+  }
+  const newProjectBtn = root.querySelector('[data-help-action="new-project"]');
+  if (newProjectBtn) {
+    newProjectBtn.addEventListener('click', () => {
+      showNewProjectDialog();
       if (typeof afterAction === 'function') afterAction();
     });
   }
@@ -1841,19 +1898,24 @@ function formatToolCommand(msg) {
   return '';
 }
 
-// Random name generator for sessions
-const adjectives = ['jungle', 'cosmic', 'mystic', 'golden', 'silver', 'crystal', 'amber', 'ruby', 'emerald', 'sapphire', 'thunder', 'lightning', 'ocean', 'mountain', 'forest', 'desert', 'arctic', 'tropical'];
-const nouns = ['safari', 'voyage', 'quest', 'journey', 'odyssey', 'adventure', 'expedition', 'discovery', 'exploration', 'mission', 'trail', 'path', 'route', 'horizon', 'peak', 'valley', 'canyon', 'ridge'];
-
-function generateRandomSessionName() {
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  return `${adj}-${noun}`;
+// Sequential chat name generator (chat-1, chat-2, etc.)
+function generateChatName() {
+  const sessions = appState.data?.sessions || [];
+  // Find highest existing chat number
+  let maxNum = 0;
+  sessions.forEach(s => {
+    const match = s.key.match(/^chat-(\d+)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNum) maxNum = num;
+    }
+  });
+  return `chat-${maxNum + 1}`;
 }
 
 // Settings dialog management
 let settingsDialog, closeSettingsBtn, settingsBtn;
-let sessionList, currentSessionName, newSessionBtn, clearSessionBtn, deleteSessionBtn;
+let chatList, currentChatName, newChatDialogBtn, clearChatBtn, deleteChatBtn;
 let tabBtns = [];
 let helpDialog, helpDialogContent, helpBtn, closeHelpBtn;
 
@@ -1861,11 +1923,11 @@ function initSettings() {
   settingsDialog = document.getElementById('settingsDialog');
   closeSettingsBtn = document.getElementById('closeSettingsDialog');
   settingsBtn = document.getElementById('settingsBtn');
-  sessionList = document.getElementById('sessionList');
-  currentSessionName = document.getElementById('currentSessionName');
-  newSessionBtn = document.getElementById('newSessionBtn');
-  clearSessionBtn = document.getElementById('clearSessionBtn');
-  deleteSessionBtn = document.getElementById('deleteSessionBtn');
+  chatList = document.getElementById('chatListContainer');
+  currentChatName = document.getElementById('currentChatNameDisplay');
+  newChatDialogBtn = document.getElementById('newChatDialogBtn');
+  clearChatBtn = document.getElementById('clearChatBtn');
+  deleteChatBtn = document.getElementById('deleteChatBtn');
   tabBtns = Array.from(document.querySelectorAll('.tab-btn'));
 
   if (settingsBtn) {
@@ -1890,15 +1952,15 @@ function initSettings() {
     });
   });
 
-  // Session actions
-  if (newSessionBtn) {
-    newSessionBtn.addEventListener('click', createRandomSession);
+  // Chat actions (in chats dialog)
+  if (newChatDialogBtn) {
+    newChatDialogBtn.addEventListener('click', createNewChat);
   }
-  if (clearSessionBtn) {
-    clearSessionBtn.addEventListener('click', clearState);
+  if (clearChatBtn) {
+    clearChatBtn.addEventListener('click', clearState);
   }
-  if (deleteSessionBtn) {
-    deleteSessionBtn.addEventListener('click', deleteState);
+  if (deleteChatBtn) {
+    deleteChatBtn.addEventListener('click', deleteState);
   }
 
   // API key management
@@ -2043,8 +2105,8 @@ function switchTab(tabName) {
   });
 }
 
-async function createRandomSession() {
-  const name = generateRandomSessionName();
+async function createNewChat() {
+  const name = generateChatName();
   try {
     const res = await fetchWithWorkspace('/api/state', {
       method: 'POST',
@@ -2053,40 +2115,40 @@ async function createRandomSession() {
     });
     if (res.ok) {
       await refreshSession();
-      refreshSessionList();
-      // Refresh sessions dialog if open
-      loadSessionsDialogData();
+      refreshChatList();
+      // Refresh chats dialog if open
+      loadChatsDialogData();
     }
   } catch (err) {
-    console.error('Create session failed:', err);
+    console.error('Create chat failed:', err);
   }
 }
 
-function refreshSessionList() {
-  if (!sessionList || !appState.data) return;
+function refreshChatList() {
+  if (!chatList || !appState.data) return;
 
   const sessions = appState.data.sessions || [];
   const currentKey = appState.data.current_key || '';
 
-  if (currentSessionName) {
-    currentSessionName.textContent = currentKey;
+  if (currentChatName) {
+    currentChatName.textContent = currentKey;
   }
 
-  sessionList.innerHTML = '';
+  chatList.innerHTML = '';
 
   sessions.forEach(session => {
     const item = document.createElement('div');
-    item.className = 'session-item';
+    item.className = 'chat-item';
     if (session.key === currentKey) {
       item.classList.add('active');
     }
 
     const name = document.createElement('div');
-    name.className = 'session-item-name';
+    name.className = 'chat-item-name';
     name.textContent = session.key;
 
     const meta = document.createElement('div');
-    meta.className = 'session-item-meta';
+    meta.className = 'chat-item-meta';
     meta.textContent = `${session.message_count || 0} messages`;
 
     item.appendChild(name);
@@ -2101,14 +2163,14 @@ function refreshSessionList() {
         });
         if (res.ok) {
           await refreshSession();
-          refreshSessionList();
+          refreshChatList();
         }
       } catch (err) {
-        console.error('Switch session failed:', err);
+        console.error('Switch chat failed:', err);
       }
     });
 
-    sessionList.appendChild(item);
+    chatList.appendChild(item);
   });
 }
 
@@ -3099,84 +3161,202 @@ function fetchWithWorkspace(url, options = {}) {
   return fetch(url, options);
 }
 
-async function initWorkspaces() {
-  // Session picker button
-  const sessionPickerBtn = document.getElementById('sessionPickerBtn');
-  if (sessionPickerBtn) {
-    sessionPickerBtn.addEventListener('click', showSessionsDialog);
-  }
-
-  // Workspace menu button
-  const workspaceMenuBtn = document.getElementById('workspaceMenuBtn');
-  if (workspaceMenuBtn) {
-    workspaceMenuBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleWorkspaceMenu();
-    });
-  }
-
-  // Close workspace menu when clicking outside
-  document.addEventListener('click', (e) => {
-    const menu = document.getElementById('workspaceMenu');
-    const menuBtn = document.getElementById('workspaceMenuBtn');
-    if (menu && menuBtn && menu.style.display !== 'none') {
-      if (!menu.contains(e.target) && !menuBtn.contains(e.target)) {
-        menu.style.display = 'none';
-      }
-    }
-  });
-
-  // Add workspace button
-  const addWorkspaceBtn = document.getElementById('addWorkspaceBtn');
-  if (addWorkspaceBtn) {
-    addWorkspaceBtn.addEventListener('click', showFolderPicker);
-  }
-
-  // Scroll buttons
-  const scrollLeft = document.getElementById('workspaceTabScrollLeft');
-  const scrollRight = document.getElementById('workspaceTabScrollRight');
-  const tabsContainer = document.getElementById('workspaceTabs');
-
-  if (scrollLeft && tabsContainer) {
-    scrollLeft.addEventListener('click', () => {
-      tabsContainer.scrollLeft -= 150;
-    });
-  }
-
-  if (scrollRight && tabsContainer) {
-    scrollRight.addEventListener('click', () => {
-      tabsContainer.scrollLeft += 150;
-    });
-  }
-
-  // Check scroll buttons visibility on scroll
-  if (tabsContainer) {
-    tabsContainer.addEventListener('scroll', updateScrollButtons);
-  }
-
-  // Initialize workspace data from session payload
-  updateWorkspaceUI();
+async function initProjects() {
+  // Initialize project/chat data from session payload
+  updateProjectUI();
+  updateChatUI();
 }
 
-function updateWorkspaceUI() {
+function updateProjectUI() {
   if (!appState.data) return;
 
   workspaceState.workspaces = appState.data.workspaces || [];
   workspaceState.currentWorkspace = appState.data.workspace || null;
   workspaceState.recentWorkspaces = appState.data.recent_workspaces || [];
 
-  // Update workspace button label in input bar
-  if (ui.workspaceLabel && workspaceState.currentWorkspace) {
+  // Update project name in toolbar
+  if (ui.currentProjectName && workspaceState.currentWorkspace) {
     const path = workspaceState.currentWorkspace.path || '';
-    const name = workspaceState.currentWorkspace.name || path.split('/').pop() || 'Workspace';
-    ui.workspaceLabel.textContent = name;
-  } else if (ui.workspaceLabel) {
-    ui.workspaceLabel.textContent = 'No workspace';
+    const name = workspaceState.currentWorkspace.name || path.split('/').pop() || 'Project';
+    ui.currentProjectName.textContent = name;
+    ui.currentProjectName.title = path;
+  } else if (ui.currentProjectName) {
+    ui.currentProjectName.textContent = 'No Project';
+    ui.currentProjectName.title = '';
   }
 
-  renderWorkspaceTabs();
-  updateSessionPickerLabel();
-  updateScrollButtons();
+  // Render project dropdown menu
+  renderProjectMenu();
+}
+
+function updateChatUI() {
+  if (!appState.data) return;
+
+  const currentKey = appState.data.current_key || '';
+
+  // Update chat label in toolbar
+  if (ui.currentChatLabel) {
+    ui.currentChatLabel.textContent = currentKey || 'chat-1';
+  }
+
+  // Render chat dropdown menu
+  renderChatMenu();
+}
+
+function toggleProjectDropdown() {
+  if (ui.projectMenu) {
+    ui.projectMenu.classList.toggle('hidden');
+    if (!ui.projectMenu.classList.contains('hidden')) {
+      renderProjectMenu();
+    }
+  }
+}
+
+function hideProjectDropdown() {
+  if (ui.projectMenu) {
+    ui.projectMenu.classList.add('hidden');
+  }
+}
+
+function toggleChatDropdown() {
+  if (ui.chatMenu) {
+    ui.chatMenu.classList.toggle('hidden');
+    if (!ui.chatMenu.classList.contains('hidden')) {
+      renderChatMenu();
+    }
+  }
+}
+
+function hideChatDropdown() {
+  if (ui.chatMenu) {
+    ui.chatMenu.classList.add('hidden');
+  }
+}
+
+function renderProjectMenu() {
+  if (!ui.projectMenuList) return;
+
+  ui.projectMenuList.innerHTML = '';
+
+  // Combine open and recent projects, deduped by path
+  const openProjects = workspaceState.workspaces || [];
+  const recentProjects = workspaceState.recentWorkspaces || [];
+
+  const seenPaths = new Set();
+  const allProjects = [];
+
+  // Add open projects first
+  openProjects.forEach(p => {
+    if (!seenPaths.has(p.path)) {
+      seenPaths.add(p.path);
+      allProjects.push(p);
+    }
+  });
+
+  // Add recent projects that aren't already in the list
+  recentProjects.forEach(p => {
+    if (!seenPaths.has(p.path)) {
+      seenPaths.add(p.path);
+      allProjects.push(p);
+    }
+  });
+
+  if (allProjects.length === 0) {
+    ui.projectMenuList.innerHTML = '<div class="project-menu-empty">No projects yet</div>';
+  } else {
+    allProjects.forEach(project => {
+      const item = document.createElement('div');
+      item.className = 'project-menu-item';
+      if (workspaceState.currentWorkspace && project.path === workspaceState.currentWorkspace.path) {
+        item.classList.add('active');
+      }
+
+      const name = project.name || project.path.split('/').pop() || project.path;
+      item.innerHTML = `
+        <div class="project-item-info">
+          <div class="project-item-name">${name}</div>
+          <div class="project-item-path">${project.path}</div>
+        </div>
+      `;
+
+      item.addEventListener('click', () => {
+        if (project.path !== workspaceState.currentWorkspace?.path) {
+          switchWorkspace(project.path);
+        }
+        hideProjectDropdown();
+      });
+
+      ui.projectMenuList.appendChild(item);
+    });
+  }
+}
+
+function renderChatMenu() {
+  if (!ui.chatMenuList) return;
+
+  ui.chatMenuList.innerHTML = '';
+  const sessions = appState.data?.sessions || [];
+  const currentKey = appState.data?.current_key || '';
+
+  if (sessions.length === 0) {
+    ui.chatMenuList.innerHTML = '<div class="chat-menu-empty">No chats yet</div>';
+    return;
+  }
+
+  sessions.forEach(session => {
+    const item = document.createElement('div');
+    item.className = 'chat-menu-item';
+    if (session.key === currentKey) {
+      item.classList.add('current');
+    }
+
+    item.innerHTML = `
+      <span class="chat-menu-item-name">${session.key}</span>
+      <span class="chat-menu-item-meta">${session.message_count || 0} messages</span>
+    `;
+
+    item.addEventListener('click', async () => {
+      if (session.key !== currentKey) {
+        await switchChat(session.key);
+      }
+      hideChatDropdown();
+    });
+
+    ui.chatMenuList.appendChild(item);
+  });
+}
+
+async function switchChat(key) {
+  try {
+    const res = await fetchWithWorkspace('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'switch', key }),
+    });
+    if (res.ok) {
+      await refreshSession();
+    }
+  } catch (err) {
+    console.error('Switch chat failed:', err);
+  }
+}
+
+async function reopenProject(path) {
+  try {
+    const res = await fetch('/api/workspace/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(error || 'Failed to reopen project');
+    }
+    await switchWorkspace(path);
+  } catch (err) {
+    console.error('Reopen project error:', err);
+    alert('Failed to reopen project: ' + err.message);
+  }
 }
 
 function renderWorkspaceTabs() {
@@ -3514,6 +3694,10 @@ async function reopenWorkspace(path) {
 }
 
 function showFolderPicker() {
+  showFolderPickerWithCallback(null);
+}
+
+function showFolderPickerWithCallback(callback) {
   const dialog = document.getElementById('folderPickerDialog');
   const folderList = document.getElementById('folderList');
   const breadcrumb = document.getElementById('folderBreadcrumb');
@@ -3522,16 +3706,15 @@ function showFolderPicker() {
   const confirmBtn = document.getElementById('confirmAddWorkspace');
   const cancelBtn = document.getElementById('cancelFolderPicker');
   const closeBtn = document.getElementById('closeFolderPicker');
+  const newFolderBtn = document.getElementById('createNewFolderBtn');
 
   if (!dialog) return;
 
   let currentPath = '';
-  let selectedPath = '';
 
   // Reset
   if (errorDiv) errorDiv.style.display = 'none';
   if (selectedFolderDiv) selectedFolderDiv.textContent = '—';
-  selectedPath = '';
 
   // Show dialog
   dialog.style.display = 'flex';
@@ -3552,6 +3735,11 @@ function showFolderPicker() {
 
       const data = await res.json();
       currentPath = data.current;
+
+      // Update selected folder display to show current folder
+      if (selectedFolderDiv) {
+        selectedFolderDiv.textContent = currentPath;
+      }
 
       // Update breadcrumb
       renderBreadcrumb(data.current, data.parent);
@@ -3621,28 +3809,22 @@ function showFolderPicker() {
       folderList.appendChild(parentItem);
     }
 
-    // Current directory (select this folder)
-    const currentItem = document.createElement('div');
-    currentItem.className = 'folder-item current-dir';
-    currentItem.innerHTML = '<i data-lucide="folder"></i><span>. (Select this folder)</span>';
-    currentItem.addEventListener('click', () => {
-      selectedPath = currentPath;
-      if (selectedFolderDiv) {
-        selectedFolderDiv.textContent = currentPath;
-      }
-      if (errorDiv) errorDiv.style.display = 'none';
-    });
-    folderList.appendChild(currentItem);
-
     // Subdirectories (handle null/undefined as empty array)
     const dirs = directories || [];
-    dirs.forEach(dir => {
-      const item = document.createElement('div');
-      item.className = 'folder-item';
-      item.innerHTML = `<i data-lucide="folder"></i><span>${dir.name}</span>`;
-      item.addEventListener('click', () => loadFolder(dir.path));
-      folderList.appendChild(item);
-    });
+    if (dirs.length === 0) {
+      const emptyItem = document.createElement('div');
+      emptyItem.className = 'folder-empty-message';
+      emptyItem.textContent = 'No subfolders';
+      folderList.appendChild(emptyItem);
+    } else {
+      dirs.forEach(dir => {
+        const item = document.createElement('div');
+        item.className = 'folder-item';
+        item.innerHTML = `<i data-lucide="folder"></i><span>${dir.name}</span>`;
+        item.addEventListener('click', () => loadFolder(dir.path));
+        folderList.appendChild(item);
+      });
+    }
 
     // Reinitialize Lucide icons
     if (window.lucide) {
@@ -3650,8 +3832,41 @@ function showFolderPicker() {
     }
   };
 
+  // Handle new folder creation
+  const handleNewFolder = async () => {
+    const name = prompt('Enter new folder name:');
+    if (!name || !name.trim()) return;
+
+    // Validate name
+    const trimmedName = name.trim();
+    if (!/^[a-zA-Z0-9_.-]+$/.test(trimmedName)) {
+      alert('Folder name can only contain letters, numbers, dots, hyphens, and underscores');
+      return;
+    }
+
+    const newPath = `${currentPath}/${trimmedName}`;
+
+    try {
+      const res = await fetch('/api/folder/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: newPath })
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Failed to create folder');
+      }
+
+      // Reload current folder to show new folder
+      await loadFolder(currentPath);
+    } catch (err) {
+      console.error('Create folder error:', err);
+      alert('Failed to create folder: ' + err.message);
+    }
+  };
+
   // Initial load - determine default path
-  // Priority: current workspace (backend handles) → recent workspace → home (backend handles)
   let defaultPath = '';
   if (!workspaceState.currentWorkspace && workspaceState.recentWorkspaces.length > 0) {
     defaultPath = workspaceState.recentWorkspaces[0].path;
@@ -3660,11 +3875,20 @@ function showFolderPicker() {
 
   // Event handlers
   const handleConfirm = async () => {
-    if (!selectedPath) {
+    // Use currentPath directly - no need to explicitly select "."
+    if (!currentPath) {
       if (errorDiv) {
-        errorDiv.textContent = 'Please select a folder';
+        errorDiv.textContent = 'Please navigate to a folder';
         errorDiv.style.display = 'block';
       }
+      return;
+    }
+
+    // If callback provided, use it instead of adding workspace
+    if (callback) {
+      callback(currentPath);
+      dialog.style.display = 'none';
+      cleanup();
       return;
     }
 
@@ -3672,31 +3896,31 @@ function showFolderPicker() {
       const res = await fetch('/api/workspace/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: selectedPath })
+        body: JSON.stringify({ path: currentPath })
       });
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || 'Failed to add workspace');
+        throw new Error(text || 'Failed to add project');
       }
 
       const data = await res.json();
 
-      // Refresh workspace list
+      // Refresh project list
       await refreshSession();
 
       // Close dialog
       dialog.style.display = 'none';
       cleanup();
 
-      // Switch to new workspace
+      // Switch to new project
       if (data.workspace) {
         await switchWorkspace(data.workspace.path);
       }
     } catch (err) {
-      console.error('Add workspace error:', err);
+      console.error('Add project error:', err);
       if (errorDiv) {
-        errorDiv.textContent = 'Failed to add workspace: ' + err.message;
+        errorDiv.textContent = 'Failed to add project: ' + err.message;
         errorDiv.style.display = 'block';
       }
     }
@@ -3705,31 +3929,37 @@ function showFolderPicker() {
   const handleCancel = () => {
     dialog.style.display = 'none';
     cleanup();
+    // Call callback with null to signal cancellation
+    if (callback) {
+      callback(null);
+    }
   };
 
   const cleanup = () => {
     if (confirmBtn) confirmBtn.removeEventListener('click', handleConfirm);
     if (cancelBtn) cancelBtn.removeEventListener('click', handleCancel);
     if (closeBtn) closeBtn.removeEventListener('click', handleCancel);
+    if (newFolderBtn) newFolderBtn.removeEventListener('click', handleNewFolder);
   };
 
   if (confirmBtn) confirmBtn.addEventListener('click', handleConfirm);
   if (cancelBtn) cancelBtn.addEventListener('click', handleCancel);
   if (closeBtn) closeBtn.addEventListener('click', handleCancel);
+  if (newFolderBtn) newFolderBtn.addEventListener('click', handleNewFolder);
 }
 
-function showCloseWorkspaceDialog(workspace) {
-  const dialog = document.getElementById('closeWorkspaceDialog');
-  const nameSpan = document.getElementById('closeWorkspaceName');
-  const confirmBtn = document.getElementById('confirmCloseWorkspace');
-  const cancelBtn1 = document.getElementById('cancelCloseWorkspaceBtn');
-  const cancelBtn2 = document.getElementById('cancelCloseWorkspace');
+function showCloseProjectDialog(project) {
+  const dialog = document.getElementById('closeProjectDialog');
+  const nameSpan = document.getElementById('closeProjectName');
+  const confirmBtn = document.getElementById('confirmCloseProject');
+  const cancelBtn1 = document.getElementById('cancelCloseProjectBtn');
+  const cancelBtn2 = document.getElementById('cancelCloseProject');
 
   if (!dialog) return;
 
-  // Set workspace name
+  // Set project name
   if (nameSpan) {
-    nameSpan.textContent = workspace.name || workspace.path;
+    nameSpan.textContent = project.name || project.path.split('/').pop() || project.path;
   }
 
   // Show dialog
@@ -3740,12 +3970,12 @@ function showCloseWorkspaceDialog(workspace) {
       const res = await fetch('/api/workspace/remove', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: workspace.path })
+        body: JSON.stringify({ path: project.path })
       });
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || 'Failed to remove workspace');
+        throw new Error(text || 'Failed to remove project');
       }
 
       // Refresh session (backend auto-switches to new current)
@@ -3755,8 +3985,8 @@ function showCloseWorkspaceDialog(workspace) {
       dialog.style.display = 'none';
       cleanup();
     } catch (err) {
-      console.error('Remove workspace error:', err);
-      alert('Failed to close workspace: ' + err.message);
+      console.error('Remove project error:', err);
+      alert('Failed to close project: ' + err.message);
       dialog.style.display = 'none';
       cleanup();
     }
@@ -3778,22 +4008,22 @@ function showCloseWorkspaceDialog(workspace) {
   if (cancelBtn2) cancelBtn2.addEventListener('click', handleCancel);
 }
 
-// ========== SESSIONS DIALOG ==========
+// ========== CHATS DIALOG ==========
 
-function showSessionsDialog() {
-  const dialog = document.getElementById('sessionsDialog');
-  const closeBtn = document.getElementById('closeSessionsDialog');
-  const newSessionBtn = document.getElementById('newSessionBtn');
-  const clearBtn = document.getElementById('clearSessionBtn');
-  const cancelBtn = document.getElementById('cancelSessionsDialog');
+function showChatsDialog() {
+  const dialog = document.getElementById('chatsDialog');
+  const closeBtn = document.getElementById('closeChatsDialog');
+  const newChatBtn = document.getElementById('newChatDialogBtn');
+  const clearBtn = document.getElementById('clearChatBtn');
+  const cancelBtn = document.getElementById('cancelChatsDialog');
 
   if (!dialog) return;
 
   // Show dialog
   dialog.style.display = 'flex';
 
-  // Load session data
-  loadSessionsDialogData();
+  // Load chat data
+  loadChatsDialogData();
 
   // Event handlers
   const handleClose = () => {
@@ -3804,46 +4034,46 @@ function showSessionsDialog() {
   const cleanup = () => {
     if (closeBtn) closeBtn.removeEventListener('click', handleClose);
     if (cancelBtn) cancelBtn.removeEventListener('click', handleClose);
-    if (newSessionBtn) newSessionBtn.removeEventListener('click', createRandomSession);
-    if (clearBtn) clearBtn.removeEventListener('click', clearCurrentSession);
+    if (newChatBtn) newChatBtn.removeEventListener('click', createNewChat);
+    if (clearBtn) clearBtn.removeEventListener('click', clearCurrentChat);
   };
 
   if (closeBtn) closeBtn.addEventListener('click', handleClose);
   if (cancelBtn) cancelBtn.addEventListener('click', handleClose);
-  if (newSessionBtn) newSessionBtn.addEventListener('click', createRandomSession);
-  if (clearBtn) clearBtn.addEventListener('click', clearCurrentSession);
+  if (newChatBtn) newChatBtn.addEventListener('click', createNewChat);
+  if (clearBtn) clearBtn.addEventListener('click', clearCurrentChat);
 }
 
-// For backwards compatibility with sessions.tmpl if still used
-window.initSessionsPage = async function() {
+// For backwards compatibility
+window.initChatsPage = async function() {
   const backBtn = document.getElementById('backToChat');
   if (backBtn) {
     backBtn.addEventListener('click', () => {
       window.location.href = '/';
     });
   }
-  await loadSessionsPageData();
-  const newSessionBtn = document.getElementById('newSessionBtn');
-  if (newSessionBtn) {
-    newSessionBtn.addEventListener('click', createRandomSession);
+  await loadChatsPageData();
+  const newChatBtn = document.getElementById('newChatDialogBtn');
+  if (newChatBtn) {
+    newChatBtn.addEventListener('click', createNewChat);
   }
-  const clearBtn = document.getElementById('clearSessionBtn');
+  const clearBtn = document.getElementById('clearChatBtn');
   if (clearBtn) {
-    clearBtn.addEventListener('click', clearCurrentSession);
+    clearBtn.addEventListener('click', clearCurrentChat);
   }
 };
 
-async function loadSessionsDialogData() {
+async function loadChatsDialogData() {
   try {
     const res = await fetchWithWorkspace('/api/session');
-    if (!res.ok) throw new Error('Failed to load session data');
+    if (!res.ok) throw new Error('Failed to load chat data');
 
     const data = await res.json();
 
-    // Update current session
-    const currentNameEl = document.getElementById('currentSessionNameDisplay');
-    const currentMessagesEl = document.getElementById('currentSessionMessages');
-    const currentUpdatedEl = document.getElementById('currentSessionUpdated');
+    // Update current chat
+    const currentNameEl = document.getElementById('currentChatNameDisplay');
+    const currentMessagesEl = document.getElementById('currentChatMessages');
+    const currentUpdatedEl = document.getElementById('currentChatUpdated');
 
     if (currentNameEl) currentNameEl.textContent = data.current_key || '—';
     if (currentMessagesEl) {
@@ -3851,7 +4081,7 @@ async function loadSessionsDialogData() {
       currentMessagesEl.textContent = `${count} message${count !== 1 ? 's' : ''}`;
     }
     if (currentUpdatedEl) {
-      // Find current session in summaries for updated time
+      // Find current chat in summaries for updated time
       const current = data.sessions?.find(s => s.key === data.current_key);
       if (current && current.updated) {
         const date = new Date(current.updated);
@@ -3861,11 +4091,277 @@ async function loadSessionsDialogData() {
       }
     }
 
-    // Render all sessions
-    renderSessionsList(data.sessions || [], data.current_key);
+    // Render all chats
+    renderChatsList(data.sessions || [], data.current_key);
   } catch (err) {
-    console.error('Load sessions error:', err);
+    console.error('Load chats error:', err);
   }
+}
+
+function clearCurrentChat() {
+  clearState();
+}
+
+function renderChatsList(sessions, currentKey) {
+  const container = document.getElementById('chatListContainer');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  // Filter out current chat from list
+  const otherChats = sessions.filter(s => s.key !== currentKey);
+
+  if (otherChats.length === 0) {
+    container.innerHTML = '<p class="help-text">No other chats. Create a new chat to get started.</p>';
+    return;
+  }
+
+  otherChats.forEach(chat => {
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+
+    const info = document.createElement('div');
+    info.className = 'chat-info';
+
+    const name = document.createElement('div');
+    name.className = 'chat-name';
+    name.textContent = chat.key;
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-meta';
+
+    const messagesSpan = document.createElement('span');
+    messagesSpan.textContent = `${chat.message_count || 0} messages`;
+
+    const updatedSpan = document.createElement('span');
+    if (chat.updated) {
+      const date = new Date(chat.updated);
+      updatedSpan.textContent = `Updated: ${date.toLocaleString()}`;
+    }
+
+    meta.appendChild(messagesSpan);
+    if (chat.updated) meta.appendChild(updatedSpan);
+
+    info.appendChild(name);
+    info.appendChild(meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'chat-actions';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'ghost danger';
+    deleteBtn.innerHTML = '<i data-lucide="trash-2"></i>';
+    deleteBtn.title = 'Delete chat';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteChat(chat.key);
+    });
+
+    actions.appendChild(deleteBtn);
+
+    card.appendChild(info);
+    card.appendChild(actions);
+
+    // Click to switch
+    card.addEventListener('click', () => {
+      switchChat(chat.key);
+    });
+
+    container.appendChild(card);
+  });
+
+  // Reinitialize Lucide icons
+  if (window.lucide) {
+    lucide.createIcons();
+  }
+}
+
+async function deleteChat(key) {
+  if (!confirm(`Delete chat "${key}" permanently?`)) return;
+
+  try {
+    const res = await fetchWithWorkspace('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', key })
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || 'Failed to delete chat');
+    }
+
+    await refreshSession();
+    loadChatsDialogData();
+  } catch (err) {
+    console.error('Delete chat error:', err);
+    alert('Failed to delete chat: ' + err.message);
+  }
+}
+
+async function loadChatsPageData() {
+  // Wrapper for backwards compatibility
+  return loadChatsDialogData();
+}
+
+// ========== NEW PROJECT DIALOG ==========
+
+let newProjectParentPath = '';
+
+function showNewProjectDialog() {
+  const dialog = document.getElementById('newProjectDialog');
+  const nameInput = document.getElementById('newProjectName');
+  const pathDisplay = document.getElementById('newProjectPath');
+  const changeBtn = document.getElementById('changeProjectLocation');
+  const confirmBtn = document.getElementById('confirmNewProject');
+  const cancelBtn = document.getElementById('cancelNewProject');
+  const closeBtn = document.getElementById('closeNewProjectDialog');
+  const errorDiv = document.getElementById('newProjectError');
+
+  if (!dialog) return;
+
+  // Reset
+  newProjectParentPath = '';
+  if (nameInput) nameInput.value = '';
+  if (pathDisplay) pathDisplay.textContent = '';
+  if (errorDiv) errorDiv.style.display = 'none';
+
+  // Get user home directory from current workspace or default
+  fetch('/api/browse')
+    .then(res => res.json())
+    .then(data => {
+      // Try to determine home from current path
+      const current = data.current || '';
+      const homeParts = current.split('/').slice(0, 3);
+      newProjectParentPath = homeParts.join('/') || '/home';
+      updateProjectPathDisplay();
+    })
+    .catch(() => {
+      newProjectParentPath = '/home';
+      updateProjectPathDisplay();
+    });
+
+  // Show dialog
+  dialog.style.display = 'flex';
+  if (nameInput) nameInput.focus();
+
+  const updateProjectPathDisplay = () => {
+    if (!pathDisplay || !nameInput) return;
+    const name = nameInput.value.trim() || 'my-project';
+    pathDisplay.textContent = `${newProjectParentPath}/${name}`;
+  };
+
+  const handleNameInput = () => {
+    updateProjectPathDisplay();
+    if (errorDiv) errorDiv.style.display = 'none';
+  };
+
+  const handleChangeLocation = () => {
+    // Show folder picker in "select parent" mode
+    showFolderPickerForNewProject((selectedPath) => {
+      newProjectParentPath = selectedPath;
+      updateProjectPathDisplay();
+    });
+  };
+
+  const handleConfirm = async () => {
+    const name = nameInput?.value.trim();
+    if (!name) {
+      if (errorDiv) {
+        errorDiv.textContent = 'Please enter a project name';
+        errorDiv.style.display = 'block';
+      }
+      return;
+    }
+
+    // Validate name (no special chars except hyphen/underscore)
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      if (errorDiv) {
+        errorDiv.textContent = 'Project name can only contain letters, numbers, hyphens, and underscores';
+        errorDiv.style.display = 'block';
+      }
+      return;
+    }
+
+    const fullPath = `${newProjectParentPath}/${name}`;
+
+    try {
+      // Create folder via API
+      const createRes = await fetch('/api/folder/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: fullPath })
+      });
+
+      if (!createRes.ok) {
+        const text = await createRes.text();
+        throw new Error(text || 'Failed to create folder');
+      }
+
+      // Add as workspace
+      const addRes = await fetch('/api/workspace/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: fullPath })
+      });
+
+      if (!addRes.ok) {
+        const text = await addRes.text();
+        throw new Error(text || 'Failed to add project');
+      }
+
+      // Refresh and switch
+      await refreshSession();
+      await switchWorkspace(fullPath);
+
+      // Close dialog
+      dialog.style.display = 'none';
+      cleanup();
+    } catch (err) {
+      console.error('Create project error:', err);
+      if (errorDiv) {
+        errorDiv.textContent = err.message || 'Failed to create project';
+        errorDiv.style.display = 'block';
+      }
+    }
+  };
+
+  const handleCancel = () => {
+    dialog.style.display = 'none';
+    cleanup();
+  };
+
+  const cleanup = () => {
+    if (nameInput) nameInput.removeEventListener('input', handleNameInput);
+    if (changeBtn) changeBtn.removeEventListener('click', handleChangeLocation);
+    if (confirmBtn) confirmBtn.removeEventListener('click', handleConfirm);
+    if (cancelBtn) cancelBtn.removeEventListener('click', handleCancel);
+    if (closeBtn) closeBtn.removeEventListener('click', handleCancel);
+  };
+
+  if (nameInput) nameInput.addEventListener('input', handleNameInput);
+  if (changeBtn) changeBtn.addEventListener('click', handleChangeLocation);
+  if (confirmBtn) confirmBtn.addEventListener('click', handleConfirm);
+  if (cancelBtn) cancelBtn.addEventListener('click', handleCancel);
+  if (closeBtn) closeBtn.addEventListener('click', handleCancel);
+}
+
+function showFolderPickerForNewProject(callback) {
+  // Hide the new project dialog while folder picker is open
+  const newProjectDialog = document.getElementById('newProjectDialog');
+  if (newProjectDialog) {
+    newProjectDialog.style.display = 'none';
+  }
+
+  showFolderPickerWithCallback((selectedPath) => {
+    // Show the new project dialog again
+    if (newProjectDialog) {
+      newProjectDialog.style.display = 'flex';
+    }
+    if (selectedPath) {
+      callback(selectedPath);
+    }
+  });
 }
 
 async function loadSessionsPageData() {
