@@ -3348,6 +3348,94 @@ button.danger:hover {
 }
 
 .help-dialog .dialog-content {
-  max-width: 960px;
+  max-width: 480px;
   width: 90vw;
+}
+
+/* Minimal Project Empty State */
+.project-empty-minimal {
+  text-align: center;
+  padding: 3rem 2rem;
+  max-width: 400px;
+}
+
+.project-empty-minimal h2 {
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin: 1rem 0 1.5rem;
+  color: var(--text);
+}
+
+.project-empty-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+/* Help Guide Styles */
+.help-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.help-section h3 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+}
+
+.help-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+}
+
+.help-icon-inline {
+  font-size: 1rem;
+  width: 1.5rem;
+  text-align: center;
+}
+
+.help-label {
+  font-weight: 500;
+  color: var(--text);
+  min-width: 100px;
+}
+
+.help-desc {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.help-key {
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  min-width: 100px;
+  text-align: center;
+}
+
+.help-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+
+.help-list li {
+  margin: 0.25rem 0;
+}
+
+.help-list strong {
+  color: var(--accent);
 }

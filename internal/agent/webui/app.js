@@ -406,53 +406,56 @@ function renderProjectEmptyState() {
 function getProjectGuideHTML() {
   return `
     <div class="project-empty">
-      <div class="project-empty-card">
-        <div class="project-guide">
-          <div class="project-guide-main">
-            <div class="project-empty-icon">📂</div>
-            <h2>Select a project to get started</h2>
-            <p>Projects keep your chats, files, and history organized per folder.</p>
-            <button class="primary" data-help-action="select-project">Open Project</button>
-            <button class="ghost" data-help-action="new-project">New Project</button>
-          </div>
-          <div class="project-empty-help">
-            <div class="help-item">
-              <div class="help-icon">+</div>
-              <div class="help-body">
-                <h3>New Project</h3>
-                <p>Create a new project folder or open an existing one from the Projects menu.</p>
-              </div>
-            </div>
-            <div class="help-item">
-              <div class="help-icon">⌄</div>
-              <div class="help-body">
-                <h3>Projects Menu</h3>
-                <p>Use the "Projects" dropdown to switch between open or recent projects.</p>
-              </div>
-            </div>
-            <div class="help-item">
-              <div class="help-icon">⚙️</div>
-              <div class="help-body">
-                <h3>Settings</h3>
-                <p>Manage API keys, providers, and compaction settings from the gear icon.</p>
-                <button class="help-link" data-help-action="open-settings">Open Settings</button>
-              </div>
-            </div>
-            <div class="help-item">
-              <div class="help-icon">🧠</div>
-              <div class="help-body">
-                <h3>Model & Tokens</h3>
-                <p>The toolbar shows the active model and how much context budget remains.</p>
-              </div>
-            </div>
-            <div class="help-item">
-              <div class="help-icon">?</div>
-              <div class="help-body">
-                <h3>Need Help?</h3>
-                <p>Use the ? button to view this guide anytime.</p>
-              </div>
-            </div>
-          </div>
+      <div class="project-empty-card project-empty-minimal">
+        <div class="project-empty-icon">📂</div>
+        <h2>Open or create a project to start chatting</h2>
+        <div class="project-empty-actions">
+          <button class="primary" data-help-action="select-project">Open Project</button>
+          <button class="ghost" data-help-action="new-project">New Project</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function getHelpGuideHTML() {
+  return `
+    <div class="help-guide">
+      <div class="help-section">
+        <h3>Toolbar</h3>
+        <div class="help-row">
+          <span class="help-icon-inline">📁</span>
+          <span class="help-label">Project ▼</span>
+          <span class="help-desc">Switch or manage projects</span>
+        </div>
+        <div class="help-row">
+          <span class="help-icon-inline">💬</span>
+          <span class="help-label">Chat ▼ | +</span>
+          <span class="help-desc">Switch or create chats</span>
+        </div>
+        <div class="help-row">
+          <span class="help-icon-inline">⚙</span>
+          <span class="help-label">Settings</span>
+          <span class="help-desc">API keys, models, preferences</span>
+        </div>
+      </div>
+      <div class="help-section">
+        <h3>How It Works</h3>
+        <ul class="help-list">
+          <li><strong>Project</strong> = a folder on your computer</li>
+          <li><strong>Chat</strong> = a conversation within a project</li>
+          <li>Each project keeps its own chat history</li>
+        </ul>
+      </div>
+      <div class="help-section">
+        <h3>Shortcuts</h3>
+        <div class="help-row">
+          <span class="help-key">Enter</span>
+          <span class="help-desc">Send message</span>
+        </div>
+        <div class="help-row">
+          <span class="help-key">Shift + Enter</span>
+          <span class="help-desc">New line</span>
         </div>
       </div>
     </div>
@@ -2004,7 +2007,7 @@ function initSettings() {
 async function openSettingsDialog() {
   if (settingsDialog) {
     settingsDialog.style.display = 'flex';
-    refreshSessionList();
+    refreshChatList();
     refreshCompactionInfo();
     loadApiKeyStatus();
     await loadOpenRouterModels();
@@ -2074,8 +2077,7 @@ function initHelpDialog() {
 function openHelpDialog() {
   if (!helpDialog || !helpDialogContent) return;
   helpDialog.style.display = 'flex';
-  helpDialogContent.innerHTML = getWorkspaceGuideHTML();
-  wireWorkspaceGuideActions(helpDialogContent, closeHelpDialog);
+  helpDialogContent.innerHTML = getHelpGuideHTML();
 }
 
 function closeHelpDialog() {
