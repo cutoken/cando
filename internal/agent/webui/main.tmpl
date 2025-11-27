@@ -142,6 +142,32 @@
     </div>
   </div>
 
+  <!-- File Browser Dialog -->
+  <div id="fileBrowserDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content file-browser-dialog">
+      <div class="dialog-header">
+        <h2>Select Files</h2>
+        <button id="closeFileBrowser" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="file-browser">
+          <div class="file-browser-breadcrumb" id="fileBrowserBreadcrumb"></div>
+          <div class="file-browser-list" id="fileBrowserList">
+            <div class="loading">Loading...</div>
+          </div>
+          <div class="file-browser-selection">
+            <label>Selected:</label>
+            <div id="selectedFilesDisplay" class="selected-files">None</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button id="cancelFileBrowser" class="ghost">Cancel</button>
+        <button id="confirmFileBrowser" class="primary">Insert Selected</button>
+      </div>
+    </div>
+  </div>
+
   <!-- New Project Dialog -->
   <div id="newProjectDialog" class="dialog-overlay" style="display: none;">
     <div class="dialog-content new-project-dialog">

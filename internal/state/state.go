@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,13 +21,6 @@ var (
 
 	fileExtension = ".json"
 	keySanitizer  = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
-
-	// Random session name generation
-	adjectives = []string{"jungle", "cosmic", "mystic", "golden", "silver", "crystal", "amber", "ruby", "emerald", "sapphire", "thunder", "lightning", "ocean", "mountain", "forest", "desert", "arctic", "tropical"}
-	nouns      = []string{"safari", "voyage", "quest", "journey", "odyssey", "adventure", "expedition", "discovery", "exploration", "mission", "trail", "path", "route", "horizon", "peak", "valley", "canyon", "ridge"}
-
-	randMu sync.Mutex
-	rng    = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
 // Message mirrors the OpenAI/OpenRouter chat schema so that stored history can be
@@ -460,30 +452,19 @@ func sanitizeKey(key string) string {
 	return sanitized
 }
 
-// generateRandomSessionName creates a random two-word session name.
-// Thread-safe via mutex.
-func generateRandomSessionName() string {
-	randMu.Lock()
-	defer randMu.Unlock()
-
-	adj := adjectives[rng.Intn(len(adjectives))]
-	noun := nouns[rng.Intn(len(nouns))]
-	return fmt.Sprintf("%s-%s", adj, noun)
-}
-
-// generateUniqueSessionNameLocked creates a unique random session name.
-// Checks against existing sessions and retries on collision.
+// generateUniqueSessionNameLocked creates a unique sequential session name (chat-1, chat-2, etc.).
 // Caller must hold m.mu lock.
 func (m *Manager) generateUniqueSessionNameLocked() string {
-	maxAttempts := 10
-	for i := 0; i < maxAttempts; i++ {
-		name := generateRandomSessionName()
-		if _, exists := m.states[name]; !exists {
-			return name
+	maxNum := 0
+	for key := range m.states {
+		var num int
+		if _, err := fmt.Sscanf(key, "chat-%d", &num); err == nil {
+			if num > maxNum {
+				maxNum = num
+			}
 		}
 	}
-	// Fallback: append timestamp for guaranteed uniqueness
-	return fmt.Sprintf("%s-%d", generateRandomSessionName(), time.Now().Unix())
+	return fmt.Sprintf("chat-%d", maxNum+1)
 }
 
 func newConversation(key, systemPrompt string) *Conversation {

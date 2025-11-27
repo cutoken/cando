@@ -234,9 +234,9 @@ async function initUI() {
   // Onboarding event listeners
   ui.saveCredentialsBtn.addEventListener('click', saveCredentials);
 
-  const providerRadios = document.querySelectorAll('input[name="provider"]');
-  providerRadios.forEach(radio => {
-    radio.addEventListener('change', (e) => {
+  const providerSelect = document.getElementById('providerSelect');
+  if (providerSelect) {
+    providerSelect.addEventListener('change', (e) => {
       const provider = e.target.value;
       if (provider === 'zai') {
         ui.apiKeyHelp.innerHTML = 'Get your Z.AI key at: <a href="https://z.ai" target="_blank">z.ai</a>';
@@ -244,7 +244,7 @@ async function initUI() {
         ui.apiKeyHelp.innerHTML = 'Get your OpenRouter key at: <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>';
       }
     });
-  });
+  }
 
   // Check credentials on load
   await checkCredentials();
@@ -254,6 +254,7 @@ async function initUI() {
   // Initialize additional components
   initSettings();
   initAutocomplete();
+  initFileDragDrop();
   initProjects();
   updateStatusBar();
 
@@ -410,8 +411,8 @@ function getProjectGuideHTML() {
         <div class="project-empty-icon">📂</div>
         <h2>Open or create a project to start chatting</h2>
         <div class="project-empty-actions">
-          <button class="primary" data-help-action="select-project">Open Project</button>
-          <button class="ghost" data-help-action="new-project">New Project</button>
+          <button class="primary" data-help-action="new-project">New Project</button>
+          <button class="ghost" data-help-action="select-project">Open Project</button>
         </div>
       </div>
     </div>
@@ -1602,8 +1603,8 @@ async function checkCredentials() {
 
 async function saveCredentials() {
   // Get selected provider
-  const providerRadio = document.querySelector('input[name="provider"]:checked');
-  const provider = providerRadio ? providerRadio.value : '';
+  const providerSelect = document.getElementById('providerSelect');
+  const provider = providerSelect ? providerSelect.value : '';
   const apiKey = ui.apiKeyInput.value.trim();
 
   // Clear previous messages
@@ -3134,6 +3135,288 @@ function selectAutocompleteItem(index) {
 
   hideAutocomplete();
   textarea.focus();
+}
+
+// ========== FILE DRAG-DROP & ATTACH ==========
+
+function initFileDragDrop() {
+  if (!ui.promptInput) return;
+
+  const textarea = ui.promptInput;
+  const wrapper = textarea.closest('.input-wrapper');
+
+  // Prevent default drag behaviors on wrapper
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    wrapper.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  });
+
+  // Visual feedback
+  ['dragenter', 'dragover'].forEach(eventName => {
+    wrapper.addEventListener(eventName, () => {
+      wrapper.classList.add('drag-over');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    wrapper.addEventListener(eventName, () => {
+      wrapper.classList.remove('drag-over');
+    });
+  });
+
+  // Handle drop
+  wrapper.addEventListener('drop', (e) => {
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      insertFilePaths(files);
+    }
+  });
+
+  // Attach button - open custom file browser instead of native picker
+  const attachBtn = document.getElementById('attachBtn');
+  if (attachBtn) {
+    attachBtn.addEventListener('click', () => {
+      showFileBrowser();
+    });
+  }
+}
+
+function insertFilePaths(files) {
+  const textarea = ui.promptInput;
+  if (!textarea) return;
+
+  // Build paths string
+  const paths = Array.from(files).map(f => `"${f.path || f.name}"`).join(' ');
+
+  // Insert at cursor position
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const text = textarea.value;
+
+  // Add space before if needed
+  const before = text.substring(0, start);
+  const after = text.substring(end);
+  const needsSpaceBefore = before.length > 0 && !/\s$/.test(before);
+  const needsSpaceAfter = after.length > 0 && !/^\s/.test(after);
+
+  const insert = (needsSpaceBefore ? ' ' : '') + paths + (needsSpaceAfter ? ' ' : '');
+
+  textarea.value = before + insert + after;
+  textarea.selectionStart = textarea.selectionEnd = start + insert.length;
+  textarea.focus();
+}
+
+function insertFilePathStrings(paths) {
+  const textarea = ui.promptInput;
+  if (!textarea || !paths.length) return;
+
+  const pathsStr = paths.map(p => `"${p}"`).join(' ');
+
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const text = textarea.value;
+
+  const before = text.substring(0, start);
+  const after = text.substring(end);
+  const needsSpaceBefore = before.length > 0 && !/\s$/.test(before);
+  const needsSpaceAfter = after.length > 0 && !/^\s/.test(after);
+
+  const insert = (needsSpaceBefore ? ' ' : '') + pathsStr + (needsSpaceAfter ? ' ' : '');
+
+  textarea.value = before + insert + after;
+  textarea.selectionStart = textarea.selectionEnd = start + insert.length;
+  textarea.focus();
+}
+
+function showFileBrowser() {
+  const dialog = document.getElementById('fileBrowserDialog');
+  const fileList = document.getElementById('fileBrowserList');
+  const breadcrumb = document.getElementById('fileBrowserBreadcrumb');
+  const selectedDisplay = document.getElementById('selectedFilesDisplay');
+  const confirmBtn = document.getElementById('confirmFileBrowser');
+  const cancelBtn = document.getElementById('cancelFileBrowser');
+  const closeBtn = document.getElementById('closeFileBrowser');
+
+  if (!dialog) return;
+
+  let currentPath = getCurrentWorkspacePath() || '';
+  let selectedFiles = [];
+
+  // Reset display
+  if (selectedDisplay) selectedDisplay.textContent = 'None';
+
+  // Show dialog
+  dialog.style.display = 'flex';
+
+  // Load folder contents with files
+  const loadFolder = async (path = '') => {
+    if (!fileList) return;
+
+    fileList.innerHTML = '<div class="loading">Loading...</div>';
+
+    try {
+      let url = '/api/browse?includeFiles=true';
+      if (path) {
+        url += `&path=${encodeURIComponent(path)}`;
+      }
+      const res = await fetchWithWorkspace(url);
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || 'Failed to browse directory');
+      }
+
+      const data = await res.json();
+      currentPath = data.current;
+
+      // Update breadcrumb
+      renderBreadcrumb(data.current, data.parent);
+
+      // Render file list
+      renderFileList(data.directories, data.files, data.parent);
+
+    } catch (err) {
+      console.error('Browse error:', err);
+      if (fileList) {
+        const errorMsg = err.message || 'Failed to load directory';
+        fileList.innerHTML = `<div class="error-message">${errorMsg}</div>`;
+      }
+    }
+  };
+
+  // Render breadcrumb navigation
+  const renderBreadcrumb = (current, parent) => {
+    if (!breadcrumb) return;
+
+    const parts = current.split('/').filter(p => p);
+    let path = '';
+
+    breadcrumb.innerHTML = '';
+
+    // Root
+    const root = document.createElement('span');
+    root.className = 'breadcrumb-item';
+    root.textContent = '/';
+    root.addEventListener('click', () => loadFolder('/'));
+    breadcrumb.appendChild(root);
+
+    // Path parts
+    parts.forEach((part, idx) => {
+      path += '/' + part;
+      const pathCopy = path;
+
+      const sep = document.createElement('span');
+      sep.className = 'breadcrumb-sep';
+      sep.textContent = '/';
+      breadcrumb.appendChild(sep);
+
+      const item = document.createElement('span');
+      item.className = 'breadcrumb-item';
+      item.textContent = part;
+      if (idx < parts.length - 1) {
+        item.addEventListener('click', () => loadFolder(pathCopy));
+      } else {
+        item.classList.add('current');
+      }
+      breadcrumb.appendChild(item);
+    });
+  };
+
+  // Render file list
+  const renderFileList = (directories, files, parent) => {
+    if (!fileList) return;
+
+    fileList.innerHTML = '';
+
+    // Parent directory (..)
+    if (parent && parent !== currentPath) {
+      const parentItem = document.createElement('div');
+      parentItem.className = 'file-browser-item parent';
+      parentItem.innerHTML = '<i data-lucide="corner-up-left"></i><span>..</span>';
+      parentItem.addEventListener('click', () => loadFolder(parent));
+      fileList.appendChild(parentItem);
+    }
+
+    // Directories
+    const dirs = directories || [];
+    dirs.forEach(dir => {
+      const item = document.createElement('div');
+      item.className = 'file-browser-item folder';
+      item.innerHTML = `<i data-lucide="folder"></i><span>${dir.name}</span>`;
+      item.addEventListener('click', () => loadFolder(dir.path));
+      fileList.appendChild(item);
+    });
+
+    // Files
+    const fileEntries = files || [];
+    if (fileEntries.length === 0 && dirs.length === 0) {
+      const emptyItem = document.createElement('div');
+      emptyItem.className = 'file-browser-empty';
+      emptyItem.textContent = 'Empty folder';
+      fileList.appendChild(emptyItem);
+    } else {
+      fileEntries.forEach(file => {
+        const item = document.createElement('div');
+        const isSelected = selectedFiles.includes(file.path);
+        item.className = 'file-browser-item file' + (isSelected ? ' selected' : '');
+        item.innerHTML = `<i data-lucide="file"></i><span>${file.name}</span>`;
+        item.addEventListener('click', () => {
+          toggleFileSelection(file.path);
+          item.classList.toggle('selected');
+        });
+        fileList.appendChild(item);
+      });
+    }
+
+    // Reinitialize Lucide icons
+    if (window.lucide) {
+      lucide.createIcons();
+    }
+  };
+
+  const toggleFileSelection = (path) => {
+    const idx = selectedFiles.indexOf(path);
+    if (idx === -1) {
+      selectedFiles.push(path);
+    } else {
+      selectedFiles.splice(idx, 1);
+    }
+    updateSelectedDisplay();
+  };
+
+  const updateSelectedDisplay = () => {
+    if (!selectedDisplay) return;
+    if (selectedFiles.length === 0) {
+      selectedDisplay.textContent = 'None';
+    } else {
+      selectedDisplay.textContent = selectedFiles.map(p => p.split('/').pop()).join(', ');
+    }
+  };
+
+  // Event handlers
+  const handleConfirm = () => {
+    if (selectedFiles.length > 0) {
+      insertFilePathStrings(selectedFiles);
+    }
+    closeDialog();
+  };
+
+  const closeDialog = () => {
+    dialog.style.display = 'none';
+    // Remove event listeners
+    if (confirmBtn) confirmBtn.removeEventListener('click', handleConfirm);
+    if (cancelBtn) cancelBtn.removeEventListener('click', closeDialog);
+    if (closeBtn) closeBtn.removeEventListener('click', closeDialog);
+  };
+
+  // Attach event listeners
+  if (confirmBtn) confirmBtn.addEventListener('click', handleConfirm);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeDialog);
+  if (closeBtn) closeBtn.addEventListener('click', closeDialog);
+
+  // Start at workspace folder
+  loadFolder(currentPath);
 }
 
 // ========== WORKSPACE MANAGEMENT ==========

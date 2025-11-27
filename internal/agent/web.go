@@ -1485,44 +1485,64 @@ func (s *webServer) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Filter to only directories, exclude hidden
+	// Check if we should include files
+	includeFiles := r.URL.Query().Get("includeFiles") == "true"
+
+	// Filter entries
 	type DirEntry struct {
-		Name string `json:"name"`
-		Path string `json:"path"`
+		Name  string `json:"name"`
+		Path  string `json:"path"`
+		IsDir bool   `json:"isDir"`
 	}
 
 	// Initialize as empty slice (not nil) so JSON marshals to [] instead of null
 	dirs := make([]DirEntry, 0)
-	for _, entry := range entries {
-		// Skip non-directories
-		if !entry.IsDir() {
-			continue
-		}
+	files := make([]DirEntry, 0)
 
-		// Skip hidden directories (starting with .)
+	for _, entry := range entries {
+		// Skip hidden entries (starting with .)
 		if strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 
-		dirs = append(dirs, DirEntry{
-			Name: entry.Name(),
-			Path: filepath.Join(absPath, entry.Name()),
-		})
+		fullPath := filepath.Join(absPath, entry.Name())
+
+		if entry.IsDir() {
+			dirs = append(dirs, DirEntry{
+				Name:  entry.Name(),
+				Path:  fullPath,
+				IsDir: true,
+			})
+		} else if includeFiles {
+			files = append(files, DirEntry{
+				Name:  entry.Name(),
+				Path:  fullPath,
+				IsDir: false,
+			})
+		}
 	}
 
 	// Sort alphabetically
 	sort.Slice(dirs, func(i, j int) bool {
 		return dirs[i].Name < dirs[j].Name
 	})
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name < files[j].Name
+	})
 
 	// Get parent directory
 	parentPath := filepath.Dir(absPath)
 
-	s.writeJSON(w, r, map[string]interface{}{
+	response := map[string]interface{}{
 		"current":     absPath,
 		"parent":      parentPath,
 		"directories": dirs,
-	})
+	}
+	if includeFiles {
+		response["files"] = files
+	}
+
+	s.writeJSON(w, r, response)
 }
 
 // handleFolderCreate creates a new directory at the specified path
