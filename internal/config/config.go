@@ -71,6 +71,7 @@ type Config struct {
 	ThinkingEnabled       bool              `yaml:"thinking_enabled"`
 	ForceThinking         bool              `yaml:"force_thinking"`
 	CompactionPrompt      string            `yaml:"compaction_summary_prompt"`
+	OpenRouterFreeMode    bool              `yaml:"openrouter_free_mode"`
 }
 
 // EnsureDefaultConfig creates config.yaml with provider-appropriate defaults if it doesn't exist

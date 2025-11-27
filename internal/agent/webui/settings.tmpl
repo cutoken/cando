@@ -85,14 +85,15 @@
                 </div>
                 <small class="help-text">Get your key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a></small>
               </div>
+              <div class="form-group free-mode-group">
+                <label class="checkbox-label free-mode-label">
+                  <input type="checkbox" id="openrouterFreeMode" />
+                  <span>Free Mode</span>
+                </label>
+                <small class="help-text">Auto-select top free models for all categories</small>
+              </div>
               <div class="form-group">
                 <label for="openrouterModelSearch">Main Model</label>
-                <div class="model-filter-options">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="freeModelsOnly" />
-                    <span>Show only free models</span>
-                  </label>
-                </div>
                 <div class="model-search-wrapper">
                   <input
                     type="text"
@@ -103,22 +104,12 @@
                   />
                   <div id="openrouterModelDropdown" class="model-dropdown" style="display: none;"></div>
                 </div>
-                <div id="openrouterModelInfo" class="model-info" style="display: none;">
-                  <div class="model-info-name"></div>
-                  <div class="model-info-pricing"></div>
-                  <div class="model-info-capabilities"></div>
-                </div>
+                <small id="openrouterModelInfo" class="model-info-line" style="display: none;"></small>
                 <input type="hidden" id="openrouterModelSelect" />
                 <small class="saved-indicator" id="openrouterModelSaved" style="display: none;">✓ Saved</small>
               </div>
               <div class="form-group">
                 <label for="openrouterSummaryModelSearch">Summary Model (for compaction)</label>
-                <div class="model-filter-options">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="freeModelsOnlySummary" />
-                    <span>Show only free models</span>
-                  </label>
-                </div>
                 <div class="model-search-wrapper">
                   <input
                     type="text"
@@ -129,23 +120,13 @@
                   />
                   <div id="openrouterSummaryModelDropdown" class="model-dropdown" style="display: none;"></div>
                 </div>
-                <div id="openrouterSummaryModelInfo" class="model-info" style="display: none;">
-                  <div class="model-info-name"></div>
-                  <div class="model-info-pricing"></div>
-                  <div class="model-info-capabilities"></div>
-                </div>
+                <small id="openrouterSummaryModelInfo" class="model-info-line" style="display: none;"></small>
                 <input type="hidden" id="openrouterSummaryModel" />
                 <small class="saved-indicator" id="openrouterSummaryModelSaved" style="display: none;">✓ Saved</small>
                 <small class="help-text">Model used for summarizing long messages during context compaction</small>
               </div>
               <div class="form-group">
                 <label for="openrouterVisionModelSearch">Vision Model</label>
-                <div class="model-filter-options">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="freeModelsOnlyVision" />
-                    <span>Show only free models</span>
-                  </label>
-                </div>
                 <div class="model-search-wrapper">
                   <input
                     type="text"
@@ -156,11 +137,7 @@
                   />
                   <div id="openrouterVisionModelDropdown" class="model-dropdown" style="display: none;"></div>
                 </div>
-                <div id="openrouterVisionModelInfo" class="model-info" style="display: none;">
-                  <div class="model-info-name"></div>
-                  <div class="model-info-pricing"></div>
-                  <div class="model-info-capabilities"></div>
-                </div>
+                <small id="openrouterVisionModelInfo" class="model-info-line" style="display: none;"></small>
                 <input type="hidden" id="openrouterVisionModel" />
                 <small class="help-text">Model for image analysis (default: qwen/qwen2.5-vl-32b-instruct)</small>
               </div>

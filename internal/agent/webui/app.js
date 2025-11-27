@@ -2252,21 +2252,18 @@ const MODEL_CONFIG = {
   main: {
     configKey: 'provider_models',
     elementPrefix: 'openrouterModel',      // openrouterModelSelect, openrouterModelSearch, etc.
-    freeCheckboxId: 'freeModelsOnly',
     defaults: { zai: 'glm-4.6', openrouter: 'deepseek/deepseek-chat-v3-0324' },
     filter: null  // no capability filter
   },
   summary: {
     configKey: 'provider_summary_models',
     elementPrefix: 'openrouterSummaryModel',
-    freeCheckboxId: 'freeModelsOnlySummary',
     defaults: { zai: 'glm-4.5-air', openrouter: 'qwen/qwen3-30b-a3b-instruct-2507' },
     filter: null
   },
   vision: {
     configKey: 'provider_vl_models',
     elementPrefix: 'openrouterVisionModel',
-    freeCheckboxId: 'freeModelsOnlyVision',
     defaults: { zai: 'glm-4.5v', openrouter: 'qwen/qwen2.5-vl-32b-instruct' },
     filter: (model) => model.capabilities && model.capabilities.includes('image')
   }
@@ -2280,37 +2277,27 @@ function getModelElements(modelType) {
     hidden: document.getElementById(prefix === 'openrouterModel' ? 'openrouterModelSelect' : prefix),
     search: document.getElementById(prefix + 'Search'),
     dropdown: document.getElementById(prefix + 'Dropdown'),
-    info: document.getElementById(prefix + 'Info'),
-    freeCheckbox: document.getElementById(cfg.freeCheckboxId)
+    info: document.getElementById(prefix + 'Info')
   };
 }
 
-// Display model info without triggering save
+// Display model info as a compact single line (only for paid models - free is already in name)
 function displayModelInfo(model, infoElement) {
   if (!model || !infoElement) return;
 
-  const nameEl = infoElement.querySelector('.model-info-name');
-  const pricingEl = infoElement.querySelector('.model-info-pricing');
-  const capabilitiesEl = infoElement.querySelector('.model-info-capabilities');
+  const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
 
-  if (nameEl) nameEl.textContent = model.name;
-
-  if (pricingEl && model.pricing) {
-    const isFree = model.pricing.prompt === "0" && model.pricing.completion === "0";
-    if (isFree) {
-      pricingEl.innerHTML = '<span style="color: #10b981; font-weight: 600; font-size: 1.1rem;">FREE</span>';
-    } else {
-      const promptPrice = model.pricing.prompt ? (parseFloat(model.pricing.prompt) * 1000000).toFixed(2) : '—';
-      const completionPrice = model.pricing.completion ? (parseFloat(model.pricing.completion) * 1000000).toFixed(2) : '—';
-      pricingEl.textContent = `Pricing: $${promptPrice}/1M input tokens, $${completionPrice}/1M output tokens`;
-    }
+  if (isFree) {
+    // Free is already shown in model name, no need to repeat
+    infoElement.style.display = 'none';
+  } else if (model.pricing) {
+    const promptPrice = model.pricing.prompt ? (parseFloat(model.pricing.prompt) * 1000000).toFixed(2) : '—';
+    const completionPrice = model.pricing.completion ? (parseFloat(model.pricing.completion) * 1000000).toFixed(2) : '—';
+    infoElement.textContent = `$${promptPrice}/$${completionPrice} per 1M tokens (in/out)`;
+    infoElement.style.display = 'inline';
+  } else {
+    infoElement.style.display = 'none';
   }
-
-  if (capabilitiesEl && model.capabilities) {
-    capabilitiesEl.textContent = `Capabilities: ${model.capabilities.join(', ')}`;
-  }
-
-  infoElement.style.display = 'block';
 }
 
 // Get current model from config (works even before provider is active)
@@ -2409,7 +2396,6 @@ function filterAndShowModelDropdown(modelType, query) {
   if (!elements.dropdown || !elements.search) return;
 
   const lowerQuery = query.toLowerCase();
-  const freeOnly = elements.freeCheckbox ? elements.freeCheckbox.checked : false;
 
   let filtered = openrouterModels.filter(model => {
     // Apply capability filter if defined (e.g., vision models)
@@ -2419,11 +2405,7 @@ function filterAndShowModelDropdown(modelType, query) {
     const matchesSearch = model.name.toLowerCase().includes(lowerQuery) ||
       (model.id && model.id.toLowerCase().includes(lowerQuery));
 
-    // Free models filter
-    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
-    const matchesFreeFilter = !freeOnly || isFree;
-
-    return matchesSearch && matchesFreeFilter;
+    return matchesSearch;
   });
 
   elements.dropdown.innerHTML = '';
@@ -2484,12 +2466,6 @@ function setupModelSearchGeneric(modelType) {
     filterAndShowModelDropdown(modelType, e.target.value);
   });
 
-  if (elements.freeCheckbox) {
-    elements.freeCheckbox.addEventListener('change', () => {
-      filterAndShowModelDropdown(modelType, elements.search.value);
-    });
-  }
-
   document.addEventListener('click', (e) => {
     if (!elements.search.contains(e.target) && !elements.dropdown.contains(e.target)) {
       elements.dropdown.style.display = 'none';
@@ -2508,10 +2484,84 @@ async function loadOpenRouterModels() {
     setupModelSearchGeneric('main');
     setupModelSearchGeneric('summary');
     setupModelSearchGeneric('vision');
+
+    // Setup Free Mode
+    setupFreeMode();
   } catch (err) {
     console.error('Failed to load OpenRouter models:', err);
     openrouterModels = [];
   }
+}
+
+// Find the top free model matching a filter (models are already sorted by popularity)
+function findTopFreeModel(filter = null) {
+  return openrouterModels.find(model => {
+    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
+    if (!isFree) return false;
+    if (filter && !filter(model)) return false;
+    return true;
+  });
+}
+
+// Apply Free Mode - auto-select top free models for all categories
+function applyFreeMode() {
+  // Find top free text model (for main and summary)
+  const topFreeText = findTopFreeModel();
+  // Find top free vision model
+  const topFreeVision = findTopFreeModel(model => model.capabilities && model.capabilities.includes('image'));
+
+  if (topFreeText) {
+    // Select for main model
+    selectProviderModel('openrouter', 'main', topFreeText);
+    // Select for summary model
+    selectProviderModel('openrouter', 'summary', topFreeText);
+  }
+
+  if (topFreeVision) {
+    selectProviderModel('openrouter', 'vision', topFreeVision);
+  } else if (topFreeText) {
+    // Fallback to text model if no vision model available
+    selectProviderModel('openrouter', 'vision', topFreeText);
+  }
+}
+
+// Save Free Mode state to config
+async function saveFreeMode(enabled) {
+  try {
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ openrouter_free_mode: enabled })
+    });
+  } catch (err) {
+    console.error('Failed to save free mode:', err);
+  }
+}
+
+// Setup Free Mode toggle
+function setupFreeMode() {
+  const freeModeToggle = document.getElementById('openrouterFreeMode');
+  if (!freeModeToggle) return;
+
+  // Load saved state
+  const freeModeEnabled = appState.data?.openrouter_free_mode || false;
+  freeModeToggle.checked = freeModeEnabled;
+
+  // If free mode is enabled on load, apply it
+  if (freeModeEnabled) {
+    applyFreeMode();
+  }
+
+  // Handle toggle changes
+  freeModeToggle.addEventListener('change', async () => {
+    const enabled = freeModeToggle.checked;
+    await saveFreeMode(enabled);
+
+    if (enabled) {
+      applyFreeMode();
+    }
+    // When disabled, keep current selections (don't revert)
+  });
 }
 
 function updateProviderStatus() {
@@ -2799,31 +2849,7 @@ async function loadApiKeyStatus() {
       if (model) {
         openrouterVisionModel.value = model.id;
         openrouterVisionSearch.value = model.name;
-
-        // Show model info
-        if (openrouterVisionInfo) {
-          const nameEl = openrouterVisionInfo.querySelector('.model-info-name');
-          const pricingEl = openrouterVisionInfo.querySelector('.model-info-pricing');
-          const capabilitiesEl = openrouterVisionInfo.querySelector('.model-info-capabilities');
-
-          if (nameEl) nameEl.textContent = model.name;
-          if (pricingEl) {
-            if (model.pricing) {
-              const isFree = model.pricing.prompt === "0" && model.pricing.completion === "0";
-              if (isFree) {
-                pricingEl.innerHTML = '<span style="color: #10b981; font-weight: 600; font-size: 1.1rem;">FREE</span>';
-              } else {
-                const promptPrice = model.pricing.prompt ? (parseFloat(model.pricing.prompt) * 1000000).toFixed(2) : '—';
-                const completionPrice = model.pricing.completion ? (parseFloat(model.pricing.completion) * 1000000).toFixed(2) : '—';
-                pricingEl.textContent = `Pricing: $${promptPrice}/1M input tokens, $${completionPrice}/1M output tokens`;
-              }
-            }
-          }
-          if (capabilitiesEl && model.capabilities) {
-            capabilitiesEl.textContent = `Capabilities: ${model.capabilities.join(', ')}`;
-          }
-          openrouterVisionInfo.style.display = 'block';
-        }
+        displayModelInfo(model, openrouterVisionInfo);
       }
     }
   } catch (err) {

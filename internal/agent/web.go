@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -14,11 +15,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"cando/internal/config"
 	"cando/internal/contextprofile"
 	"cando/internal/credentials"
+	"cando/internal/logging"
 	"cando/internal/state"
 	"cando/internal/tooling"
 )
@@ -42,6 +45,21 @@ var lucideScript []byte
 var openrouterModels []byte
 
 var templates *template.Template
+
+// OpenRouter models cache for daily refresh
+const (
+	openrouterModelsURL      = "https://openrouter.ai/api/frontend/models/find?order=top-weekly"
+	openrouterCacheDuration  = 24 * time.Hour
+	openrouterFetchTimeout   = 30 * time.Second
+)
+
+type openrouterModelCache struct {
+	data      []byte
+	fetchedAt time.Time
+	mu        sync.RWMutex
+}
+
+var orModelCache = &openrouterModelCache{}
 
 // RunWeb launches the embedded HTML interface instead of the CLI REPL.
 func (a *Agent) RunWeb(ctx context.Context, addr string) error {
@@ -243,7 +261,133 @@ func (s *webServer) handleLucide(w http.ResponseWriter, r *http.Request) {
 
 func (s *webServer) handleOpenRouterModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_, _ = w.Write(openrouterModels)
+	data := s.getOpenRouterModels()
+	_, _ = w.Write(data)
+}
+
+// getOpenRouterModels returns cached models, fetches fresh if stale, falls back to embedded
+func (s *webServer) getOpenRouterModels() []byte {
+	orModelCache.mu.RLock()
+	if time.Since(orModelCache.fetchedAt) < openrouterCacheDuration && len(orModelCache.data) > 0 {
+		defer orModelCache.mu.RUnlock()
+		return orModelCache.data
+	}
+	orModelCache.mu.RUnlock()
+
+	// Try to fetch fresh data in background if cache exists but stale
+	if len(orModelCache.data) > 0 {
+		go s.refreshOpenRouterModels()
+		orModelCache.mu.RLock()
+		defer orModelCache.mu.RUnlock()
+		return orModelCache.data
+	}
+
+	// No cache - fetch synchronously
+	data, err := fetchOpenRouterModels()
+	if err != nil {
+		logging.DevLog("openrouter models fetch failed: %v, using embedded fallback", err)
+		return openrouterModels
+	}
+
+	orModelCache.mu.Lock()
+	orModelCache.data = data
+	orModelCache.fetchedAt = time.Now()
+	orModelCache.mu.Unlock()
+
+	logging.DevLog("openrouter models fetched: %d bytes", len(data))
+	return data
+}
+
+func (s *webServer) refreshOpenRouterModels() {
+	data, err := fetchOpenRouterModels()
+	if err != nil {
+		logging.DevLog("openrouter models background refresh failed: %v", err)
+		return
+	}
+
+	orModelCache.mu.Lock()
+	orModelCache.data = data
+	orModelCache.fetchedAt = time.Now()
+	orModelCache.mu.Unlock()
+	logging.DevLog("openrouter models refreshed: %d bytes", len(data))
+}
+
+// fetchOpenRouterModels fetches and transforms models from OpenRouter API
+func fetchOpenRouterModels() ([]byte, error) {
+	client := &http.Client{Timeout: openrouterFetchTimeout}
+	resp, err := client.Get(openrouterModelsURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body failed: %w", err)
+	}
+
+	// Parse the response and transform to our format
+	var apiResp struct {
+		Data struct {
+			Models []struct {
+				Name            string   `json:"name"`
+				InputModalities []string `json:"input_modalities"`
+				HasTextOutput   bool     `json:"has_text_output"`
+				Endpoint        struct {
+					ModelVariantSlug string `json:"model_variant_slug"`
+					Pricing          struct {
+						Prompt     string `json:"prompt"`
+						Completion string `json:"completion"`
+					} `json:"pricing"`
+				} `json:"endpoint"`
+			} `json:"models"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("parse failed: %w", err)
+	}
+
+	// Transform to our format
+	type modelEntry struct {
+		ID           string   `json:"id"`
+		Name         string   `json:"name"`
+		Capabilities []string `json:"capabilities"`
+		Pricing      struct {
+			Prompt     string `json:"prompt"`
+			Completion string `json:"completion"`
+		} `json:"pricing"`
+	}
+
+	var models []modelEntry
+	for _, m := range apiResp.Data.Models {
+		if !m.HasTextOutput || m.Endpoint.ModelVariantSlug == "" {
+			continue
+		}
+		models = append(models, modelEntry{
+			ID:           m.Endpoint.ModelVariantSlug,
+			Name:         m.Name,
+			Capabilities: m.InputModalities,
+			Pricing: struct {
+				Prompt     string `json:"prompt"`
+				Completion string `json:"completion"`
+			}{
+				Prompt:     m.Endpoint.Pricing.Prompt,
+				Completion: m.Endpoint.Pricing.Completion,
+			},
+		})
+	}
+
+	// Sanity check: if we got very few models, API structure likely changed
+	if len(models) < 100 {
+		return nil, fmt.Errorf("too few models returned (%d), API structure may have changed", len(models))
+	}
+
+	return json.Marshal(models)
 }
 
 func (s *webServer) handleSession(w http.ResponseWriter, r *http.Request) {
@@ -740,6 +884,7 @@ type sessionPayload struct {
 	ProviderSummaryModels map[string]string `json:"provider_summary_models,omitempty"`
 	ProviderVLModels      map[string]string `json:"provider_vl_models,omitempty"`
 	CurrentProvider       string            `json:"current_provider,omitempty"`
+	OpenRouterFreeMode    bool              `json:"openrouter_free_mode,omitempty"`
 	Plan                  *planSnapshot     `json:"plan,omitempty"`
 	PlanError             string            `json:"plan_error,omitempty"`
 	Workdir               string            `json:"workdir,omitempty"`
@@ -851,6 +996,7 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 		ProviderSummaryModels: s.agent.cfg.ProviderSummaryModels,
 		ProviderVLModels:      s.agent.cfg.ProviderVLModels,
 		CurrentProvider:       currentProvider,
+		OpenRouterFreeMode:    s.agent.cfg.OpenRouterFreeMode,
 	}
 	if s.workspaceManager != nil {
 		payload.Workspaces = s.workspaceManager.List()
@@ -1182,9 +1328,10 @@ func (s *webServer) handleFileSearch(w http.ResponseWriter, r *http.Request) {
 func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var req struct {
-			ContextMessagePercent      float64 `json:"context_message_percent"`
-			ContextConversationPercent float64 `json:"context_conversation_percent"`
-			ContextProtectRecent       int     `json:"context_protect_recent"`
+			ContextMessagePercent      *float64 `json:"context_message_percent"`
+			ContextConversationPercent *float64 `json:"context_conversation_percent"`
+			ContextProtectRecent       *int     `json:"context_protect_recent"`
+			OpenRouterFreeMode         *bool    `json:"openrouter_free_mode"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1192,24 +1339,33 @@ func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Validate inputs
-		if req.ContextMessagePercent <= 0 || req.ContextMessagePercent > 0.10 {
-			s.respondError(w, r, http.StatusBadRequest, "context_message_percent must be between 0 and 0.10 (0-10%)")
-			return
+		// Validate and update compaction settings if provided
+		if req.ContextMessagePercent != nil {
+			if *req.ContextMessagePercent <= 0 || *req.ContextMessagePercent > 0.10 {
+				s.respondError(w, r, http.StatusBadRequest, "context_message_percent must be between 0 and 0.10 (0-10%)")
+				return
+			}
+			s.agent.cfg.ContextMessagePercent = *req.ContextMessagePercent
 		}
-		if req.ContextConversationPercent <= 0 || req.ContextConversationPercent > 0.80 {
-			s.respondError(w, r, http.StatusBadRequest, "context_conversation_percent must be between 0 and 0.80 (0-80%)")
-			return
+		if req.ContextConversationPercent != nil {
+			if *req.ContextConversationPercent <= 0 || *req.ContextConversationPercent > 0.80 {
+				s.respondError(w, r, http.StatusBadRequest, "context_conversation_percent must be between 0 and 0.80 (0-80%)")
+				return
+			}
+			s.agent.cfg.ContextTotalPercent = *req.ContextConversationPercent
 		}
-		if req.ContextProtectRecent < 0 {
-			s.respondError(w, r, http.StatusBadRequest, "context_protect_recent must be >= 0")
-			return
+		if req.ContextProtectRecent != nil {
+			if *req.ContextProtectRecent < 0 {
+				s.respondError(w, r, http.StatusBadRequest, "context_protect_recent must be >= 0")
+				return
+			}
+			s.agent.cfg.ContextProtectRecent = *req.ContextProtectRecent
 		}
 
-		// Update config
-		s.agent.cfg.ContextMessagePercent = req.ContextMessagePercent
-		s.agent.cfg.ContextTotalPercent = req.ContextConversationPercent
-		s.agent.cfg.ContextProtectRecent = req.ContextProtectRecent
+		// Update OpenRouter Free Mode if provided
+		if req.OpenRouterFreeMode != nil {
+			s.agent.cfg.OpenRouterFreeMode = *req.OpenRouterFreeMode
+		}
 
 		// Save to config file
 		if err := config.Save(s.agent.cfg); err != nil {

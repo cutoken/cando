@@ -2343,6 +2343,14 @@ body.sidebar-collapsed .app-shell {
   display: none;
 }
 
+.provider-body .form-group {
+  margin-bottom: 1.25rem;
+}
+
+.provider-body .form-group:last-child {
+  margin-bottom: 0;
+}
+
 .provider-section.expanded .provider-body {
   display: block;
 }
@@ -2366,6 +2374,28 @@ body.sidebar-collapsed .app-shell {
   height: 16px;
   cursor: pointer;
   accent-color: var(--accent);
+}
+
+/* Free Mode toggle styling */
+.free-mode-group {
+  background: var(--bg-panel);
+  padding: 0.75rem 1rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.free-mode-label {
+  font-weight: 500;
+}
+
+.free-mode-label span {
+  color: #10b981;
+}
+
+.free-mode-group .help-text {
+  margin-top: 0.25rem;
+  margin-left: 1.5rem;
 }
 
 .model-search-wrapper {
@@ -2414,29 +2444,11 @@ body.sidebar-collapsed .app-shell {
   color: var(--muted);
 }
 
-.model-info {
-  margin-top: 0.75rem;
-  padding: 1rem;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 0.4rem;
-}
-
-.model-info-name {
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  font-size: 0.95rem;
-}
-
-.model-info-pricing {
-  font-size: 0.85rem;
+.model-info-line {
+  display: inline;
+  font-size: 0.8rem;
   color: var(--muted);
-  margin-bottom: 0.25rem;
-}
-
-.model-info-capabilities {
-  font-size: 0.85rem;
-  color: var(--muted);
+  margin-top: 0.25rem;
 }
 
 /* Form inputs in settings */
