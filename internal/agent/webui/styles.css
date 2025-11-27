@@ -2378,11 +2378,9 @@ body.sidebar-collapsed .app-shell {
 
 .model-dropdown {
   position: fixed;
-  left: auto;
-  right: auto;
   max-height: 60vh;
   min-height: 200px;
-  width: 600px;
+  min-width: 400px;
   overflow-y: auto;
   background: var(--bg);
   border: 1px solid var(--border);

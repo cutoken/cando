@@ -2459,6 +2459,11 @@ function filterAndShowModelDropdown(modelType, query) {
     }
   }
 
+  // Position dropdown below the search input
+  const inputRect = elements.search.getBoundingClientRect();
+  elements.dropdown.style.top = (inputRect.bottom + 4) + 'px';
+  elements.dropdown.style.left = inputRect.left + 'px';
+  elements.dropdown.style.width = Math.max(inputRect.width, 400) + 'px';
   elements.dropdown.style.display = 'block';
 }
 
