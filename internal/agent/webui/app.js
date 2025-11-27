@@ -2163,469 +2163,268 @@ function refreshProviderList() {
 // OpenRouter model search state
 let openrouterModels = [];
 let selectedOpenRouterModel = null;
-let modelSearchSetup = false;
-let summaryModelSearchSetup = false;
-let visionModelSearchSetup = false;
+let modelSearchSetupDone = { main: false, summary: false, vision: false };
 
-// Load OpenRouter models and setup searchable dropdown
+// Consolidated model configuration - single source of truth
+const MODEL_CONFIG = {
+  main: {
+    configKey: 'provider_models',
+    elementPrefix: 'openrouterModel',      // openrouterModelSelect, openrouterModelSearch, etc.
+    freeCheckboxId: 'freeModelsOnly',
+    defaults: { zai: 'glm-4.6', openrouter: 'deepseek/deepseek-chat-v3-0324' },
+    filter: null  // no capability filter
+  },
+  summary: {
+    configKey: 'provider_summary_models',
+    elementPrefix: 'openrouterSummaryModel',
+    freeCheckboxId: 'freeModelsOnlySummary',
+    defaults: { zai: 'glm-4.5-air', openrouter: 'qwen/qwen3-30b-a3b-instruct-2507' },
+    filter: null
+  },
+  vision: {
+    configKey: 'provider_vl_models',
+    elementPrefix: 'openrouterVisionModel',
+    freeCheckboxId: 'freeModelsOnlyVision',
+    defaults: { zai: 'glm-4.5v', openrouter: 'qwen/qwen2.5-vl-32b-instruct' },
+    filter: (model) => model.capabilities && model.capabilities.includes('image')
+  }
+};
+
+// Get DOM elements for a model type
+function getModelElements(modelType) {
+  const cfg = MODEL_CONFIG[modelType];
+  const prefix = cfg.elementPrefix;
+  return {
+    hidden: document.getElementById(prefix === 'openrouterModel' ? 'openrouterModelSelect' : prefix),
+    search: document.getElementById(prefix + 'Search'),
+    dropdown: document.getElementById(prefix + 'Dropdown'),
+    info: document.getElementById(prefix + 'Info'),
+    freeCheckbox: document.getElementById(cfg.freeCheckboxId)
+  };
+}
+
+// Display model info without triggering save
+function displayModelInfo(model, infoElement) {
+  if (!model || !infoElement) return;
+
+  const nameEl = infoElement.querySelector('.model-info-name');
+  const pricingEl = infoElement.querySelector('.model-info-pricing');
+  const capabilitiesEl = infoElement.querySelector('.model-info-capabilities');
+
+  if (nameEl) nameEl.textContent = model.name;
+
+  if (pricingEl && model.pricing) {
+    const isFree = model.pricing.prompt === "0" && model.pricing.completion === "0";
+    if (isFree) {
+      pricingEl.innerHTML = '<span style="color: #10b981; font-weight: 600; font-size: 1.1rem;">FREE</span>';
+    } else {
+      const promptPrice = model.pricing.prompt ? (parseFloat(model.pricing.prompt) * 1000000).toFixed(2) : '—';
+      const completionPrice = model.pricing.completion ? (parseFloat(model.pricing.completion) * 1000000).toFixed(2) : '—';
+      pricingEl.textContent = `Pricing: $${promptPrice}/1M input tokens, $${completionPrice}/1M output tokens`;
+    }
+  }
+
+  if (capabilitiesEl && model.capabilities) {
+    capabilitiesEl.textContent = `Capabilities: ${model.capabilities.join(', ')}`;
+  }
+
+  infoElement.style.display = 'block';
+}
+
+// Get current model from config (works even before provider is active)
+function getCurrentModel(provider, modelType) {
+  const cfg = MODEL_CONFIG[modelType];
+  const configModels = appState.data?.[cfg.configKey] || {};
+  const providers = appState.data?.providers || [];
+  const activeProvider = providers.find(p => p.key === provider);
+
+  // Prefer active provider's model, fall back to config, then default
+  return activeProvider?.model || configModels[provider] || cfg.defaults[provider];
+}
+
+// Check if model is already saved (guard against unnecessary saves)
+function isModelAlreadySaved(provider, modelType, modelId) {
+  const cfg = MODEL_CONFIG[modelType];
+  const configModels = appState.data?.[cfg.configKey] || {};
+  return configModels[provider] === modelId;
+}
+
+// Save provider model (generic for all model types)
+async function saveProviderModelGeneric(provider, modelType, modelId) {
+  if (!modelId) return;
+
+  // Guard: don't save if already the same
+  if (isModelAlreadySaved(provider, modelType, modelId)) {
+    console.log(`${modelType} model ${modelId} already configured for ${provider}, skipping save`);
+    return;
+  }
+
+  try {
+    setStatus(`Saving ${provider} ${modelType} model…`);
+    const res = await fetch('/api/provider/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, model_type: modelType, model: modelId })
+    });
+
+    if (res.ok) {
+      setStatus(`Model updated: ${modelId}`);
+
+      // Show saved indicator
+      const elements = getModelElements(modelType);
+      const indicatorId = elements.hidden?.id + 'Saved';
+      showSavedIndicator(indicatorId);
+
+      await refreshSession();
+      updateProviderStatus();
+    } else {
+      const error = await res.text();
+      setStatus(`Failed to save model: ${error}`);
+    }
+  } catch (err) {
+    console.error('Save model failed:', err);
+    setStatus('Failed to save model');
+  }
+}
+
+// Select model (display + save) - called when user picks from dropdown
+function selectProviderModel(provider, modelType, model) {
+  const elements = getModelElements(modelType);
+  if (!elements.hidden || !elements.search) return;
+
+  elements.hidden.value = model.id;
+  elements.search.value = model.name;
+  if (modelType === 'main') selectedOpenRouterModel = model;
+
+  displayModelInfo(model, elements.info);
+  elements.dropdown.style.display = 'none';
+
+  saveProviderModelGeneric(provider, modelType, model.id);
+}
+
+// Populate model display from config (no save triggered)
+function populateModelFromConfig(provider, modelType) {
+  const elements = getModelElements(modelType);
+  if (!elements.hidden) return;
+
+  const modelId = getCurrentModel(provider, modelType);
+  if (!modelId) return;
+
+  elements.hidden.value = modelId;
+
+  const model = openrouterModels.find(m => m.id === modelId);
+  if (model && elements.search) {
+    elements.search.value = model.name;
+    if (modelType === 'main') selectedOpenRouterModel = model;
+    displayModelInfo(model, elements.info);
+  }
+}
+
+// Filter and show models in dropdown
+function filterAndShowModelDropdown(modelType, query) {
+  const cfg = MODEL_CONFIG[modelType];
+  const elements = getModelElements(modelType);
+  if (!elements.dropdown || !elements.search) return;
+
+  const lowerQuery = query.toLowerCase();
+  const freeOnly = elements.freeCheckbox ? elements.freeCheckbox.checked : false;
+
+  let filtered = openrouterModels.filter(model => {
+    // Apply capability filter if defined (e.g., vision models)
+    if (cfg.filter && !cfg.filter(model)) return false;
+
+    // Text search filter
+    const matchesSearch = model.name.toLowerCase().includes(lowerQuery) ||
+      (model.id && model.id.toLowerCase().includes(lowerQuery));
+
+    // Free models filter
+    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
+    const matchesFreeFilter = !freeOnly || isFree;
+
+    return matchesSearch && matchesFreeFilter;
+  });
+
+  elements.dropdown.innerHTML = '';
+
+  if (filtered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'model-dropdown-item';
+    empty.textContent = 'No models found';
+    empty.style.color = '#888';
+    elements.dropdown.appendChild(empty);
+  } else {
+    filtered.slice(0, 50).forEach(model => {
+      const item = document.createElement('div');
+      item.className = 'model-dropdown-item';
+
+      const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
+
+      item.innerHTML = `
+        <div class="model-dropdown-name">${model.name}${isFree ? ' <span style="color: #10b981; font-size: 0.75rem;">FREE</span>' : ''}</div>
+        <div class="model-dropdown-id">${model.id}</div>
+      `;
+      item.addEventListener('click', () => selectProviderModel('openrouter', modelType, model));
+      elements.dropdown.appendChild(item);
+    });
+
+    if (filtered.length > 50) {
+      const more = document.createElement('div');
+      more.className = 'model-dropdown-item';
+      more.textContent = `... and ${filtered.length - 50} more. Type to filter.`;
+      more.style.color = '#888';
+      more.style.fontStyle = 'italic';
+      elements.dropdown.appendChild(more);
+    }
+  }
+
+  elements.dropdown.style.display = 'block';
+}
+
+// Setup model search for a model type (generic)
+function setupModelSearchGeneric(modelType) {
+  if (modelSearchSetupDone[modelType]) return;
+
+  const elements = getModelElements(modelType);
+  if (!elements.search || !elements.dropdown) return;
+
+  modelSearchSetupDone[modelType] = true;
+
+  elements.search.addEventListener('focus', () => {
+    filterAndShowModelDropdown(modelType, elements.search.value);
+  });
+
+  elements.search.addEventListener('input', (e) => {
+    filterAndShowModelDropdown(modelType, e.target.value);
+  });
+
+  if (elements.freeCheckbox) {
+    elements.freeCheckbox.addEventListener('change', () => {
+      filterAndShowModelDropdown(modelType, elements.search.value);
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!elements.search.contains(e.target) && !elements.dropdown.contains(e.target)) {
+      elements.dropdown.style.display = 'none';
+    }
+  });
+}
+
+// Load OpenRouter models and setup searchable dropdowns
 async function loadOpenRouterModels() {
   try {
     const res = await fetch('/openrouter-models.json');
     if (!res.ok) throw new Error('Failed to load models');
     openrouterModels = await res.json();
 
-    // Only setup event listeners once
-    if (!modelSearchSetup) {
-      setupModelSearch();
-    }
-    if (!summaryModelSearchSetup) {
-      setupSummaryModelSearch();
-    }
-    if (!visionModelSearchSetup) {
-      setupVisionModelSearch();
-    }
+    // Setup all model type searches
+    setupModelSearchGeneric('main');
+    setupModelSearchGeneric('summary');
+    setupModelSearchGeneric('vision');
   } catch (err) {
     console.error('Failed to load OpenRouter models:', err);
     openrouterModels = [];
   }
-}
-
-function setupModelSearch() {
-  const searchInput = document.getElementById('openrouterModelSearch');
-  const dropdown = document.getElementById('openrouterModelDropdown');
-  const hiddenSelect = document.getElementById('openrouterModelSelect');
-  const modelInfo = document.getElementById('openrouterModelInfo');
-  const freeOnlyCheckbox = document.getElementById('freeModelsOnly');
-
-  if (!searchInput || !dropdown) return;
-
-  modelSearchSetup = true;
-
-  // Show dropdown on focus
-  searchInput.addEventListener('focus', () => {
-    filterAndShowModels(searchInput.value);
-  });
-
-  // Filter on input
-  searchInput.addEventListener('input', (e) => {
-    filterAndShowModels(e.target.value);
-  });
-
-  // Filter when free-only checkbox changes
-  if (freeOnlyCheckbox) {
-    freeOnlyCheckbox.addEventListener('change', () => {
-      filterAndShowModels(searchInput.value);
-    });
-  }
-
-  // Hide dropdown when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
-      dropdown.style.display = 'none';
-    }
-  });
-}
-
-function filterAndShowModels(query) {
-  const dropdown = document.getElementById('openrouterModelDropdown');
-  const searchInput = document.getElementById('openrouterModelSearch');
-  const freeOnlyCheckbox = document.getElementById('freeModelsOnly');
-  if (!dropdown || !searchInput) return;
-
-  const lowerQuery = query.toLowerCase();
-  const freeOnly = freeOnlyCheckbox ? freeOnlyCheckbox.checked : false;
-
-  let filtered = openrouterModels.filter(model => {
-    // Text search filter
-    const matchesSearch = model.name.toLowerCase().includes(lowerQuery) ||
-      (model.id && model.id.toLowerCase().includes(lowerQuery));
-
-    // Free models filter (models with $0 pricing)
-    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
-    const matchesFreeFilter = !freeOnly || isFree;
-
-    return matchesSearch && matchesFreeFilter;
-  });
-
-  dropdown.innerHTML = '';
-
-  if (filtered.length === 0) {
-    dropdown.innerHTML = '<div class="model-dropdown-item">No models found</div>';
-    positionDropdown(searchInput, dropdown);
-    dropdown.style.display = 'block';
-    return;
-  }
-
-  // Show max 50 results
-  filtered.slice(0, 50).forEach(model => {
-    const item = document.createElement('div');
-    item.className = 'model-dropdown-item';
-
-    // Add "FREE" badge if it's a free model
-    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
-    const freeBadge = isFree ? ' <span style="color: #10b981; font-weight: 600;">[FREE]</span>' : '';
-
-    item.innerHTML = `
-      <div class="model-dropdown-item-name">${model.name}${freeBadge}</div>
-      <div class="model-dropdown-item-id">${model.id || 'Unknown ID'}</div>
-    `;
-
-    item.addEventListener('click', () => {
-      selectModel(model);
-    });
-
-    dropdown.appendChild(item);
-  });
-
-  positionDropdown(searchInput, dropdown);
-  dropdown.style.display = 'block';
-}
-
-// Position dropdown below input field
-function positionDropdown(inputElement, dropdownElement) {
-  const rect = inputElement.getBoundingClientRect();
-  dropdownElement.style.top = `${rect.bottom + 4}px`;
-  dropdownElement.style.left = `${rect.left}px`;
-  dropdownElement.style.width = `${rect.width}px`;
-}
-
-function selectModel(model) {
-  const searchInput = document.getElementById('openrouterModelSearch');
-  const dropdown = document.getElementById('openrouterModelDropdown');
-  const hiddenSelect = document.getElementById('openrouterModelSelect');
-  const modelInfo = document.getElementById('openrouterModelInfo');
-
-  if (!searchInput || !dropdown || !hiddenSelect || !modelInfo) return;
-
-  // Update input and hidden select
-  searchInput.value = model.name;
-  hiddenSelect.value = model.id;
-  selectedOpenRouterModel = model;
-
-  // Hide dropdown
-  dropdown.style.display = 'none';
-
-  // Show model info
-  const nameEl = modelInfo.querySelector('.model-info-name');
-  const pricingEl = modelInfo.querySelector('.model-info-pricing');
-  const capabilitiesEl = modelInfo.querySelector('.model-info-capabilities');
-
-  if (nameEl) nameEl.textContent = model.name;
-
-  if (pricingEl) {
-    if (model.pricing) {
-      // Check if it's a free model
-      const isFree = model.pricing.prompt === "0" && model.pricing.completion === "0";
-
-      if (isFree) {
-        pricingEl.innerHTML = '<span style="color: #10b981; font-weight: 600; font-size: 1.1rem;">FREE</span>';
-      } else {
-        // Prices are per token, multiply by 1M for per-million-tokens
-        const promptPrice = model.pricing.prompt ? (parseFloat(model.pricing.prompt) * 1000000).toFixed(2) : '—';
-        const completionPrice = model.pricing.completion ? (parseFloat(model.pricing.completion) * 1000000).toFixed(2) : '—';
-        pricingEl.textContent = `Pricing: $${promptPrice}/1M input tokens, $${completionPrice}/1M output tokens`;
-      }
-    } else {
-      pricingEl.textContent = 'Pricing: Not available';
-    }
-  }
-
-  if (capabilitiesEl && model.capabilities) {
-    capabilitiesEl.textContent = `Capabilities: ${model.capabilities.join(', ')}`;
-  }
-
-  modelInfo.style.display = 'block';
-
-  // Auto-save the selected model
-  saveProviderModel('openrouter');
-}
-
-// Summary model search functions (duplicated for summary model)
-function setupSummaryModelSearch() {
-  const searchInput = document.getElementById('openrouterSummaryModelSearch');
-  const dropdown = document.getElementById('openrouterSummaryModelDropdown');
-  const hiddenSelect = document.getElementById('openrouterSummaryModel');
-  const modelInfo = document.getElementById('openrouterSummaryModelInfo');
-  const freeOnlyCheckbox = document.getElementById('freeModelsOnlySummary');
-
-  if (!searchInput || !dropdown) return;
-
-  summaryModelSearchSetup = true;
-
-  // Show dropdown on focus
-  searchInput.addEventListener('focus', () => {
-    filterAndShowSummaryModels(searchInput.value);
-  });
-
-  // Filter on input
-  searchInput.addEventListener('input', (e) => {
-    filterAndShowSummaryModels(e.target.value);
-  });
-
-  // Filter when free-only checkbox changes
-  if (freeOnlyCheckbox) {
-    freeOnlyCheckbox.addEventListener('change', () => {
-      filterAndShowSummaryModels(searchInput.value);
-    });
-  }
-
-  // Hide dropdown when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
-      dropdown.style.display = 'none';
-    }
-  });
-}
-
-function filterAndShowSummaryModels(query) {
-  const dropdown = document.getElementById('openrouterSummaryModelDropdown');
-  const searchInput = document.getElementById('openrouterSummaryModelSearch');
-  const freeOnlyCheckbox = document.getElementById('freeModelsOnlySummary');
-  if (!dropdown || !searchInput) return;
-
-  const lowerQuery = query.toLowerCase();
-  const freeOnly = freeOnlyCheckbox ? freeOnlyCheckbox.checked : false;
-
-  let filtered = openrouterModels.filter(model => {
-    // Text search filter
-    const matchesSearch = model.name.toLowerCase().includes(lowerQuery) ||
-      (model.id && model.id.toLowerCase().includes(lowerQuery));
-
-    // Free models filter (models with $0 pricing)
-    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
-    const matchesFreeFilter = !freeOnly || isFree;
-
-    return matchesSearch && matchesFreeFilter;
-  });
-
-  dropdown.innerHTML = '';
-
-  if (filtered.length === 0) {
-    dropdown.innerHTML = '<div class="model-dropdown-item">No models found</div>';
-    positionDropdown(searchInput, dropdown);
-    dropdown.style.display = 'block';
-    return;
-  }
-
-  // Show max 50 results
-  filtered.slice(0, 50).forEach(model => {
-    const item = document.createElement('div');
-    item.className = 'model-dropdown-item';
-
-    // Add "FREE" badge if it's a free model
-    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
-    const freeBadge = isFree ? ' <span style="color: #10b981; font-weight: 600;">[FREE]</span>' : '';
-
-    item.innerHTML = `
-      <div class="model-dropdown-item-name">${model.name}${freeBadge}</div>
-      <div class="model-dropdown-item-id">${model.id || 'Unknown ID'}</div>
-    `;
-
-    item.addEventListener('click', () => {
-      selectSummaryModel(model);
-    });
-
-    dropdown.appendChild(item);
-  });
-
-  positionDropdown(searchInput, dropdown);
-  dropdown.style.display = 'block';
-}
-
-function selectSummaryModel(model) {
-  const searchInput = document.getElementById('openrouterSummaryModelSearch');
-  const dropdown = document.getElementById('openrouterSummaryModelDropdown');
-  const hiddenSelect = document.getElementById('openrouterSummaryModel');
-  const modelInfo = document.getElementById('openrouterSummaryModelInfo');
-
-  if (!searchInput || !dropdown || !hiddenSelect || !modelInfo) return;
-
-  // Update input and hidden select
-  searchInput.value = model.name;
-  hiddenSelect.value = model.id;
-
-  // Hide dropdown
-  dropdown.style.display = 'none';
-
-  // Show model info
-  const nameEl = modelInfo.querySelector('.model-info-name');
-  const pricingEl = modelInfo.querySelector('.model-info-pricing');
-  const capabilitiesEl = modelInfo.querySelector('.model-info-capabilities');
-
-  if (nameEl) nameEl.textContent = model.name;
-
-  if (pricingEl) {
-    if (model.pricing) {
-      // Check if it's a free model
-      const isFree = model.pricing.prompt === "0" && model.pricing.completion === "0";
-
-      if (isFree) {
-        pricingEl.innerHTML = '<span style="color: #10b981; font-weight: 600; font-size: 1.1rem;">FREE</span>';
-      } else {
-        // Prices are per token, multiply by 1M for per-million-tokens
-        const promptPrice = model.pricing.prompt ? (parseFloat(model.pricing.prompt) * 1000000).toFixed(2) : '—';
-        const completionPrice = model.pricing.completion ? (parseFloat(model.pricing.completion) * 1000000).toFixed(2) : '—';
-        pricingEl.textContent = `Pricing: $${promptPrice}/1M input tokens, $${completionPrice}/1M output tokens`;
-      }
-    } else {
-      pricingEl.textContent = 'Pricing: Not available';
-    }
-  }
-
-  if (capabilitiesEl && model.capabilities) {
-    capabilitiesEl.textContent = `Capabilities: ${model.capabilities.join(', ')}`;
-  }
-
-  modelInfo.style.display = 'block';
-
-  // Auto-save the selected summary model
-  saveProviderSummaryModel('openrouter');
-}
-
-// Vision model search functions (filtered by image capability)
-function setupVisionModelSearch() {
-  const searchInput = document.getElementById('openrouterVisionModelSearch');
-  const dropdown = document.getElementById('openrouterVisionModelDropdown');
-  const hiddenSelect = document.getElementById('openrouterVisionModel');
-  const modelInfo = document.getElementById('openrouterVisionModelInfo');
-  const freeOnlyCheckbox = document.getElementById('freeModelsOnlyVision');
-
-  if (!searchInput || !dropdown) return;
-
-  visionModelSearchSetup = true;
-
-  // Show dropdown on focus
-  searchInput.addEventListener('focus', () => {
-    filterAndShowVisionModels(searchInput.value);
-  });
-
-  // Filter on input
-  searchInput.addEventListener('input', (e) => {
-    filterAndShowVisionModels(e.target.value);
-  });
-
-  // Filter when free-only checkbox changes
-  if (freeOnlyCheckbox) {
-    freeOnlyCheckbox.addEventListener('change', () => {
-      filterAndShowVisionModels(searchInput.value);
-    });
-  }
-
-  // Hide dropdown when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
-      dropdown.style.display = 'none';
-    }
-  });
-}
-
-function filterAndShowVisionModels(query) {
-  const dropdown = document.getElementById('openrouterVisionModelDropdown');
-  const searchInput = document.getElementById('openrouterVisionModelSearch');
-  const freeOnlyCheckbox = document.getElementById('freeModelsOnlyVision');
-  if (!dropdown || !searchInput) return;
-
-  const lowerQuery = query.toLowerCase();
-  const freeOnly = freeOnlyCheckbox ? freeOnlyCheckbox.checked : false;
-
-  let filtered = openrouterModels.filter(model => {
-    // Must have image capability
-    const hasImageCapability = model.capabilities && model.capabilities.includes('image');
-    if (!hasImageCapability) return false;
-
-    // Text search filter
-    const matchesSearch = model.name.toLowerCase().includes(lowerQuery) ||
-      (model.id && model.id.toLowerCase().includes(lowerQuery));
-
-    // Free models filter (models with $0 pricing)
-    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
-    const matchesFreeFilter = !freeOnly || isFree;
-
-    return matchesSearch && matchesFreeFilter;
-  });
-
-  dropdown.innerHTML = '';
-
-  if (filtered.length === 0) {
-    dropdown.innerHTML = '<div class="model-dropdown-item">No vision models found</div>';
-    positionDropdown(searchInput, dropdown);
-    dropdown.style.display = 'block';
-    return;
-  }
-
-  // Show max 50 results
-  filtered.slice(0, 50).forEach(model => {
-    const item = document.createElement('div');
-    item.className = 'model-dropdown-item';
-
-    // Add "FREE" badge if it's a free model
-    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
-    const freeBadge = isFree ? ' <span style="color: #10b981; font-weight: 600;">[FREE]</span>' : '';
-
-    item.innerHTML = `
-      <div class="model-dropdown-item-name">${model.name}${freeBadge}</div>
-      <div class="model-dropdown-item-id">${model.id || 'Unknown ID'}</div>
-    `;
-
-    item.addEventListener('click', () => {
-      selectVisionModel(model);
-    });
-
-    dropdown.appendChild(item);
-  });
-
-  positionDropdown(searchInput, dropdown);
-  dropdown.style.display = 'block';
-}
-
-function selectVisionModel(model) {
-  const searchInput = document.getElementById('openrouterVisionModelSearch');
-  const dropdown = document.getElementById('openrouterVisionModelDropdown');
-  const hiddenSelect = document.getElementById('openrouterVisionModel');
-  const modelInfo = document.getElementById('openrouterVisionModelInfo');
-
-  if (!searchInput || !dropdown || !hiddenSelect || !modelInfo) return;
-
-  // Update input and hidden select
-  searchInput.value = model.name;
-  hiddenSelect.value = model.id;
-
-  // Hide dropdown
-  dropdown.style.display = 'none';
-
-  // Show model info
-  const nameEl = modelInfo.querySelector('.model-info-name');
-  const pricingEl = modelInfo.querySelector('.model-info-pricing');
-  const capabilitiesEl = modelInfo.querySelector('.model-info-capabilities');
-
-  if (nameEl) nameEl.textContent = model.name;
-
-  if (pricingEl) {
-    if (model.pricing) {
-      // Check if it's a free model
-      const isFree = model.pricing.prompt === "0" && model.pricing.completion === "0";
-
-      if (isFree) {
-        pricingEl.innerHTML = '<span style="color: #10b981; font-weight: 600; font-size: 1.1rem;">FREE</span>';
-      } else {
-        // Prices are per token, multiply by 1M for per-million-tokens
-        const promptPrice = model.pricing.prompt ? (parseFloat(model.pricing.prompt) * 1000000).toFixed(2) : '—';
-        const completionPrice = model.pricing.completion ? (parseFloat(model.pricing.completion) * 1000000).toFixed(2) : '—';
-        pricingEl.textContent = `Pricing: $${promptPrice}/1M input tokens, $${completionPrice}/1M output tokens`;
-      }
-    } else {
-      pricingEl.textContent = 'Pricing: Not available';
-    }
-  }
-
-  if (capabilitiesEl && model.capabilities) {
-    capabilitiesEl.textContent = `Capabilities: ${model.capabilities.join(', ')}`;
-  }
-
-  modelInfo.style.display = 'block';
-
-  // Auto-save the selected vision model
-  saveProviderVisionModel('openrouter');
 }
 
 function updateProviderStatus() {
@@ -2674,76 +2473,23 @@ function updateProviderStatus() {
     openrouterRadio.disabled = !openrouterProvider; // Disable if not configured
   }
 
-  // Set current model selections
+  // Set Z.AI model selections
   if (zaiProvider) {
     const zaiSelect = document.getElementById('zaiModelSelect');
     if (zaiSelect && zaiProvider.model) {
       zaiSelect.value = zaiProvider.model;
     }
-  }
-
-  if (openrouterProvider) {
-    const openrouterSelect = document.getElementById('openrouterModelSelect');
-    const openrouterSearch = document.getElementById('openrouterModelSearch');
-    if (openrouterSelect && openrouterProvider.model) {
-      openrouterSelect.value = openrouterProvider.model;
-
-      // Find and display the model info
-      const model = openrouterModels.find(m => m.id === openrouterProvider.model);
-      if (model && openrouterSearch) {
-        openrouterSearch.value = model.name;
-        selectModel(model);
-      }
+    const zaiSummarySelect = document.getElementById('zaiSummaryModelSelect');
+    if (zaiSummarySelect) {
+      const summaryModels = appState.data?.provider_summary_models || {};
+      zaiSummarySelect.value = summaryModels['zai'] || 'glm-4.5-air';
     }
   }
 
-  // Set summary model selections
-  const summaryModels = appState.data?.provider_summary_models || {};
-
-  const zaiSummarySelect = document.getElementById('zaiSummaryModelSelect');
-  if (zaiSummarySelect) {
-    const zaiSummaryModel = summaryModels['zai'] || appState.data?.summary_model || 'glm-4.5-air';
-    zaiSummarySelect.value = zaiSummaryModel;
-  }
-
-  const openrouterSummaryHidden = document.getElementById('openrouterSummaryModel');
-  const openrouterSummarySearch = document.getElementById('openrouterSummaryModelSearch');
-  const openrouterSummaryInfo = document.getElementById('openrouterSummaryModelInfo');
-
-  if (openrouterSummaryHidden) {
-    const orSummaryModel = summaryModels['openrouter'] || 'qwen/qwen3-next-80b-a3b-instruct';
-    openrouterSummaryHidden.value = orSummaryModel;
-
-    // Find and display the model info
-    const model = openrouterModels.find(m => m.id === orSummaryModel);
-    if (model && openrouterSummarySearch && openrouterSummaryInfo) {
-      openrouterSummarySearch.value = model.name;
-
-      // Populate model info
-      const nameEl = openrouterSummaryInfo.querySelector('.model-info-name');
-      const pricingEl = openrouterSummaryInfo.querySelector('.model-info-pricing');
-      const capabilitiesEl = openrouterSummaryInfo.querySelector('.model-info-capabilities');
-
-      if (nameEl) nameEl.textContent = model.name;
-
-      if (pricingEl && model.pricing) {
-        const isFree = model.pricing.prompt === "0" && model.pricing.completion === "0";
-        if (isFree) {
-          pricingEl.innerHTML = '<span style="color: #10b981; font-weight: 600; font-size: 1.1rem;">FREE</span>';
-        } else {
-          const promptPrice = model.pricing.prompt ? (parseFloat(model.pricing.prompt) * 1000000).toFixed(2) : '—';
-          const completionPrice = model.pricing.completion ? (parseFloat(model.pricing.completion) * 1000000).toFixed(2) : '—';
-          pricingEl.textContent = `Pricing: $${promptPrice}/1M input tokens, $${completionPrice}/1M output tokens`;
-        }
-      }
-
-      if (capabilitiesEl && model.capabilities) {
-        capabilitiesEl.textContent = `Capabilities: ${model.capabilities.join(', ')}`;
-      }
-
-      openrouterSummaryInfo.style.display = 'block';
-    }
-  }
+  // Set OpenRouter model selections (works even before API key is set)
+  populateModelFromConfig('openrouter', 'main');
+  populateModelFromConfig('openrouter', 'summary');
+  populateModelFromConfig('openrouter', 'vision');
 }
 
 // Initialize provider accordions - expand active provider by default
@@ -2843,140 +2589,6 @@ function showSavedIndicator(indicatorId) {
       indicator.style.display = 'none';
     }, 300); // Wait for fade-out transition
   }, 2000); // Show for 2 seconds
-}
-
-async function saveProviderModel(providerKey) {
-  const selectId = providerKey === 'zai' ? 'zaiModelSelect' : 'openrouterModelSelect';
-  const select = document.getElementById(selectId);
-
-  if (!select || !select.value) {
-    return;
-  }
-
-  const selectedModel = select.value;
-
-  // Check if the selected model is already the current one - avoid unnecessary saves
-  const providers = Array.isArray(appState.data?.providers) ? appState.data.providers : [];
-  const provider = providers.find(p => p.key === providerKey);
-  if (provider && provider.model === selectedModel) {
-    console.log(`Model ${selectedModel} already configured for ${providerKey}, skipping save`);
-    return;
-  }
-
-  try {
-    setStatus(`Saving ${providerKey} model…`);
-    const res = await fetch('/api/provider/model', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: providerKey,
-        model: selectedModel
-      })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      setStatus(`Model updated: ${selectedModel}`);
-
-      // Show saved indicator
-      const indicatorId = providerKey === 'zai' ? 'zaiModelSaved' : 'openrouterModelSaved';
-      showSavedIndicator(indicatorId);
-
-      await refreshSession();
-      updateProviderStatus();
-    } else {
-      const error = await res.text();
-      setStatus(`Failed to save model: ${error}`);
-    }
-  } catch (err) {
-    console.error('Save model failed:', err);
-    setStatus('Failed to save model');
-  }
-}
-
-// Save provider summary model selection
-async function saveProviderSummaryModel(providerKey) {
-  const selectId = providerKey === 'zai' ? 'zaiSummaryModelSelect' : 'openrouterSummaryModel';
-  const input = document.getElementById(selectId);
-
-  if (!input || !input.value) {
-    return;
-  }
-
-  const selectedModel = input.value.trim();
-
-  // Check if the selected model is already the current one - avoid unnecessary saves
-  const summaryModels = appState.data?.provider_summary_models || {};
-  const currentModel = summaryModels[providerKey];
-  if (currentModel === selectedModel) {
-    console.log(`Summary model ${selectedModel} already configured for ${providerKey}, skipping save`);
-    return;
-  }
-
-  try {
-    setStatus(`Saving ${providerKey} summary model…`);
-    const res = await fetch('/api/provider/summary-model', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: providerKey,
-        model: selectedModel
-      })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      setStatus(`Summary model updated: ${selectedModel}`);
-
-      // Show saved indicator
-      const indicatorId = providerKey === 'zai' ? 'zaiSummaryModelSaved' : 'openrouterSummaryModelSaved';
-      showSavedIndicator(indicatorId);
-
-      await refreshSession();
-      updateProviderStatus();
-    } else {
-      const error = await res.text();
-      setStatus(`Failed to save summary model: ${error}`);
-    }
-  } catch (err) {
-    console.error('Save summary model failed:', err);
-    setStatus('Failed to save summary model');
-  }
-}
-
-async function saveProviderVisionModel(providerKey) {
-  const selectId = 'openrouterVisionModel';
-  const input = document.getElementById(selectId);
-
-  if (!input || !input.value) {
-    return;
-  }
-
-  const selectedModel = input.value.trim();
-
-  try {
-    setStatus(`Saving ${providerKey} vision model…`);
-    const res = await fetch('/api/provider/vision-model', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: providerKey,
-        model: selectedModel
-      })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      setStatus(`Vision model updated: ${selectedModel}`);
-      await loadApiKeyStatus();
-    } else {
-      const error = await res.text();
-      setStatus(`Failed to save vision model: ${error}`);
-    }
-  } catch (err) {
-    console.error('Save vision model failed:', err);
-    setStatus('Failed to save vision model');
-  }
 }
 
 async function saveApiKey(provider) {

@@ -130,30 +130,30 @@ func TestNewUserDefaultsByProvider(t *testing.T) {
 		{
 			name:            "ZAI provider gets correct defaults",
 			provider:        "zai",
-			expectedModel:   DefaultZAIModel,
-			expectedSummary: DefaultZAISummaryModel,
-			expectedVL:      DefaultZAIVLModel,
+			expectedModel:   ProviderDefaults["zai"].Main,
+			expectedSummary: ProviderDefaults["zai"].Summary,
+			expectedVL:      ProviderDefaults["zai"].VL,
 		},
 		{
 			name:            "OpenRouter provider gets correct defaults",
 			provider:        "openrouter",
-			expectedModel:   DefaultOpenRouterModel,
-			expectedSummary: DefaultOpenRouterSummaryModel,
-			expectedVL:      DefaultOpenRouterVLModel,
+			expectedModel:   ProviderDefaults["openrouter"].Main,
+			expectedSummary: ProviderDefaults["openrouter"].Summary,
+			expectedVL:      ProviderDefaults["openrouter"].VL,
 		},
 		{
-			name:            "Mock provider gets OpenRouter defaults (not handled in EnsureDefaultConfig)",
+			name:            "Mock provider gets mock defaults",
 			provider:        "mock",
-			expectedModel:   DefaultOpenRouterModel, // Falls through to default case
-			expectedSummary: "", // Not set for unknown providers
-			expectedVL:      "", // Not set for unknown providers
+			expectedModel:   ProviderDefaults["mock"].Main,
+			expectedSummary: ProviderDefaults["mock"].Summary,
+			expectedVL:      ProviderDefaults["mock"].VL,
 		},
 		{
 			name:            "Unknown provider gets OpenRouter defaults",
 			provider:        "unknown",
-			expectedModel:   DefaultOpenRouterModel,
-			expectedSummary: "", // Not set in EnsureDefaultConfig for unknown providers
-			expectedVL:      "", // Not set in EnsureDefaultConfig for unknown providers
+			expectedModel:   ProviderDefaults["openrouter"].Main,
+			expectedSummary: ProviderDefaults["openrouter"].Summary,
+			expectedVL:      ProviderDefaults["openrouter"].VL,
 		},
 	}
 
@@ -226,9 +226,9 @@ func TestNewUserDefaultsByProvider(t *testing.T) {
 
 func TestModelForProviderFallbacks(t *testing.T) {
 	tests := []struct {
-		name         string
-		provider     string
-		setupConfig  func(*Config)
+		name          string
+		provider      string
+		setupConfig   func(*Config)
 		expectedModel string
 	}{
 		{
@@ -245,7 +245,7 @@ func TestModelForProviderFallbacks(t *testing.T) {
 			setupConfig: func(c *Config) {
 				c.ProviderModels = map[string]string{} // Empty
 			},
-			expectedModel: DefaultZAIModel,
+			expectedModel: ProviderDefaults["zai"].Main,
 		},
 		{
 			name:     "OpenRouter gets provider-specific model when configured",
@@ -261,7 +261,7 @@ func TestModelForProviderFallbacks(t *testing.T) {
 			setupConfig: func(c *Config) {
 				c.ProviderModels = map[string]string{} // Empty
 			},
-			expectedModel: DefaultOpenRouterModel,
+			expectedModel: ProviderDefaults["openrouter"].Main,
 		},
 		{
 			name:     "Mock gets default model",
@@ -269,7 +269,7 @@ func TestModelForProviderFallbacks(t *testing.T) {
 			setupConfig: func(c *Config) {
 				c.ProviderModels = map[string]string{} // Empty
 			},
-			expectedModel: DefaultMockModel,
+			expectedModel: ProviderDefaults["mock"].Main,
 		},
 		{
 			name:     "Unknown provider falls back to generic model",
@@ -297,9 +297,9 @@ func TestModelForProviderFallbacks(t *testing.T) {
 
 func TestSummaryModelForProviderFallbacks(t *testing.T) {
 	tests := []struct {
-		name              string
-		provider          string
-		setupConfig       func(*Config)
+		name                 string
+		provider             string
+		setupConfig          func(*Config)
 		expectedSummaryModel string
 	}{
 		{
@@ -316,7 +316,7 @@ func TestSummaryModelForProviderFallbacks(t *testing.T) {
 			setupConfig: func(c *Config) {
 				c.ProviderSummaryModels = map[string]string{} // Empty
 			},
-			expectedSummaryModel: DefaultZAISummaryModel,
+			expectedSummaryModel: ProviderDefaults["zai"].Summary,
 		},
 		{
 			name:     "OpenRouter gets provider-specific summary model when configured",
@@ -332,7 +332,7 @@ func TestSummaryModelForProviderFallbacks(t *testing.T) {
 			setupConfig: func(c *Config) {
 				c.ProviderSummaryModels = map[string]string{} // Empty
 			},
-			expectedSummaryModel: DefaultOpenRouterSummaryModel,
+			expectedSummaryModel: ProviderDefaults["openrouter"].Summary,
 		},
 		{
 			name:     "Mock gets default summary model",
@@ -340,7 +340,7 @@ func TestSummaryModelForProviderFallbacks(t *testing.T) {
 			setupConfig: func(c *Config) {
 				c.ProviderSummaryModels = map[string]string{} // Empty
 			},
-			expectedSummaryModel: DefaultMockSummaryModel,
+			expectedSummaryModel: ProviderDefaults["mock"].Summary,
 		},
 		{
 			name:     "Unknown provider falls back to generic summary model",
@@ -395,7 +395,7 @@ func TestVLModelForProviderFallbacks(t *testing.T) {
 			setupConfig: func(c *Config) {
 				c.ProviderVLModels = map[string]string{} // Empty
 			},
-			expectedVLModel: DefaultZAIVLModel,
+			expectedVLModel: ProviderDefaults["zai"].VL,
 		},
 		{
 			name:     "OpenRouter falls back to default VL when not configured",
@@ -403,7 +403,7 @@ func TestVLModelForProviderFallbacks(t *testing.T) {
 			setupConfig: func(c *Config) {
 				c.ProviderVLModels = map[string]string{} // Empty
 			},
-			expectedVLModel: DefaultOpenRouterVLModel,
+			expectedVLModel: ProviderDefaults["openrouter"].VL,
 		},
 		{
 			name:     "Mock gets default VL model",
@@ -411,7 +411,7 @@ func TestVLModelForProviderFallbacks(t *testing.T) {
 			setupConfig: func(c *Config) {
 				c.ProviderVLModels = map[string]string{}
 			},
-			expectedVLModel: DefaultMockVLModel,
+			expectedVLModel: ProviderDefaults["mock"].VL,
 		},
 		{
 			name:     "Unknown provider falls back to generic VL model",
@@ -429,7 +429,7 @@ func TestVLModelForProviderFallbacks(t *testing.T) {
 				c.ProviderVLModels = map[string]string{}
 				// No generic VL model set
 			},
-			expectedVLModel: DefaultOpenRouterVLModel,
+			expectedVLModel: ProviderDefaults["openrouter"].VL,
 		},
 	}
 

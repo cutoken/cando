@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,23 +12,36 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Provider-specific default model constants
-const (
-	// Main model defaults
-	DefaultZAIModel        = "glm-4.6"
-	DefaultOpenRouterModel = "deepseek/deepseek-chat-v3-0324"
-	DefaultMockModel       = "mock-model"
-	
-	// Summary model defaults  
-	DefaultZAISummaryModel        = "glm-4.5-air"
-	DefaultOpenRouterSummaryModel = "qwen/qwen3-30b-a3b-instruct-2507"
-	DefaultMockSummaryModel       = "mock-summary-model"
-	
-	// VL (Vision Language) model defaults
-	DefaultZAIVLModel        = "glm-4.5v"
-	DefaultOpenRouterVLModel = "qwen/qwen2.5-vl-32b-instruct"
-	DefaultMockVLModel       = "mock-vl-model"
-)
+// ProviderModelDefaults holds default models for each provider - single source of truth
+type ProviderModelDefaults struct {
+	Main    string
+	Summary string
+	VL      string
+}
+
+// ProviderDefaults maps provider keys to their default models
+var ProviderDefaults = map[string]ProviderModelDefaults{
+	"zai": {
+		Main:    "glm-4.6",
+		Summary: "glm-4.5-air",
+		VL:      "glm-4.5v",
+	},
+	"openrouter": {
+		Main:    "deepseek/deepseek-chat-v3-0324",
+		Summary: "qwen/qwen3-30b-a3b-instruct-2507",
+		VL:      "qwen/qwen2.5-vl-32b-instruct",
+	},
+	"mock": {
+		Main:    "mock-model",
+		Summary: "mock-summary-model",
+		VL:      "mock-vl-model",
+	},
+}
+
+// KnownProviders returns the list of all known provider keys
+func KnownProviders() []string {
+	return []string{"zai", "openrouter", "mock"}
+}
 
 // Config captures the tunable runtime settings for the agent.
 const DefaultCompactionPrompt = "Summarize the following text in 20 words or fewer. Return only the summary."
@@ -75,56 +89,42 @@ func EnsureDefaultConfig(provider string) error {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
-	cfg := Config{}
-	switch strings.ToLower(provider) {
-	case "zai":
-		cfg.Model = DefaultZAIModel
-		cfg.ProviderModels = map[string]string{
-			"zai":        DefaultZAIModel,
-			"openrouter": DefaultOpenRouterModel,
-			"mock":       DefaultMockModel,
-		}
-		cfg.SummaryModel = DefaultZAISummaryModel
-		cfg.ProviderSummaryModels = map[string]string{
-			"zai":        DefaultZAISummaryModel,
-			"openrouter": DefaultOpenRouterSummaryModel,
-			"mock":       DefaultMockSummaryModel,
-		}
-		cfg.VLModel = DefaultZAIVLModel
-		cfg.ProviderVLModels = map[string]string{
-			"zai":        DefaultZAIVLModel,
-			"openrouter": DefaultOpenRouterVLModel,
-			"mock":       DefaultMockVLModel,
-		}
+	cfg := Config{
+		ProviderModels:        make(map[string]string),
+		ProviderSummaryModels: make(map[string]string),
+		ProviderVLModels:      make(map[string]string),
+	}
+
+	// Populate all provider defaults from the single source of truth
+	for _, p := range KnownProviders() {
+		defaults := ProviderDefaults[p]
+		cfg.ProviderModels[p] = defaults.Main
+		cfg.ProviderSummaryModels[p] = defaults.Summary
+		cfg.ProviderVLModels[p] = defaults.VL
+	}
+
+	// Set current model based on requested provider
+	provider = strings.ToLower(provider)
+	if defaults, ok := ProviderDefaults[provider]; ok {
+		cfg.Model = defaults.Main
+		cfg.SummaryModel = defaults.Summary
+		cfg.VLModel = defaults.VL
+	} else {
+		// Fall back to openrouter defaults
+		cfg.Model = ProviderDefaults["openrouter"].Main
+		cfg.SummaryModel = ProviderDefaults["openrouter"].Summary
+		cfg.VLModel = ProviderDefaults["openrouter"].VL
+	}
+
+	// ZAI-specific base URL
+	if provider == "zai" {
 		cfg.ZAIBaseURL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-	case "openrouter":
-		cfg.Model = DefaultOpenRouterModel
-		cfg.ProviderModels = map[string]string{
-			"zai":        DefaultZAIModel,
-			"openrouter": DefaultOpenRouterModel,
-			"mock":       DefaultMockModel,
-		}
-		cfg.SummaryModel = DefaultOpenRouterSummaryModel
-		cfg.ProviderSummaryModels = map[string]string{
-			"zai":        DefaultZAISummaryModel,
-			"openrouter": DefaultOpenRouterSummaryModel,
-			"mock":       DefaultMockSummaryModel,
-		}
-		cfg.VLModel = DefaultOpenRouterVLModel
-		cfg.ProviderVLModels = map[string]string{
-			"zai":        DefaultZAIVLModel,
-			"openrouter": DefaultOpenRouterVLModel,
-			"mock":       DefaultMockVLModel,
-		}
-	default:
-		// Use general defaults
-		cfg.Model = DefaultOpenRouterModel
 	}
 
 	// Apply standard defaults for other fields
 	cfg.Temperature = 0.7
 	cfg.ThinkingEnabled = true
-	cfg.ForceThinking = true
+	cfg.ForceThinking = false
 	cfg.ContextProfile = "memory"
 	cfg.ContextMessagePercent = 0.02 // 2% of model context
 	cfg.ContextTotalPercent = 0.80   // 80% of model context
@@ -146,7 +146,8 @@ func EnsureDefaultConfig(provider string) error {
 	return nil
 }
 
-// EnsureAllProviderDefaults ensures all provider maps have default values for all known providers
+// EnsureAllProviderDefaults ensures all provider maps have default values for all known providers.
+// Only writes to disk if changes were actually made.
 func EnsureAllProviderDefaults(configPath string) error {
 	// Load existing config
 	data, err := os.ReadFile(configPath)
@@ -159,6 +160,9 @@ func EnsureAllProviderDefaults(configPath string) error {
 		return fmt.Errorf("unmarshal config: %w", err)
 	}
 
+	// Track if any changes were made
+	var changes []string
+
 	// Initialize maps if nil
 	if cfg.ProviderModels == nil {
 		cfg.ProviderModels = make(map[string]string)
@@ -170,48 +174,39 @@ func EnsureAllProviderDefaults(configPath string) error {
 		cfg.ProviderVLModels = make(map[string]string)
 	}
 
-	// Ensure all providers have defaults in all maps
-	knownProviders := []string{"zai", "openrouter", "mock"}
-	
-	for _, provider := range knownProviders {
+	// Ensure all providers have defaults using the ProviderDefaults map
+	for _, provider := range KnownProviders() {
+		defaults, ok := ProviderDefaults[provider]
+		if !ok {
+			continue
+		}
+
 		// Main models
 		if cfg.ProviderModels[provider] == "" {
-			switch provider {
-			case "zai":
-				cfg.ProviderModels[provider] = DefaultZAIModel
-			case "openrouter":
-				cfg.ProviderModels[provider] = DefaultOpenRouterModel
-			case "mock":
-				cfg.ProviderModels[provider] = DefaultMockModel
-			}
+			cfg.ProviderModels[provider] = defaults.Main
+			changes = append(changes, fmt.Sprintf("%s.main=%s", provider, defaults.Main))
 		}
 
 		// Summary models
 		if cfg.ProviderSummaryModels[provider] == "" {
-			switch provider {
-			case "zai":
-				cfg.ProviderSummaryModels[provider] = DefaultZAISummaryModel
-			case "openrouter":
-				cfg.ProviderSummaryModels[provider] = DefaultOpenRouterSummaryModel
-			case "mock":
-				cfg.ProviderSummaryModels[provider] = DefaultMockSummaryModel
-			}
+			cfg.ProviderSummaryModels[provider] = defaults.Summary
+			changes = append(changes, fmt.Sprintf("%s.summary=%s", provider, defaults.Summary))
 		}
 
 		// VL models
 		if cfg.ProviderVLModels[provider] == "" {
-			switch provider {
-			case "zai":
-				cfg.ProviderVLModels[provider] = DefaultZAIVLModel
-			case "openrouter":
-				cfg.ProviderVLModels[provider] = DefaultOpenRouterVLModel
-			case "mock":
-				cfg.ProviderVLModels[provider] = DefaultMockVLModel
-			}
+			cfg.ProviderVLModels[provider] = defaults.VL
+			changes = append(changes, fmt.Sprintf("%s.vl=%s", provider, defaults.VL))
 		}
 	}
 
-	// Write back the updated config
+	// Only write if changes were made
+	if len(changes) == 0 {
+		return nil
+	}
+
+	log.Printf("Config: adding missing provider defaults: %v", changes)
+
 	updatedData, err := yaml.Marshal(&cfg)
 	if err != nil {
 		return fmt.Errorf("marshal updated config: %w", err)
@@ -283,7 +278,7 @@ func (c *Config) applyDefaults() {
 	if c.BaseURL == "" {
 		c.BaseURL = "https://openrouter.ai/api/v1"
 	}
-	// Note: Model and SummaryModel defaults are handled by EnsureDefaultConfig() 
+	// Note: Model and SummaryModel defaults are handled by EnsureDefaultConfig()
 	// and provider-aware fallbacks in ModelFor()/SummaryModelFor() to avoid conflicts
 	if c.Temperature == 0 {
 		c.Temperature = 0.2
@@ -330,7 +325,7 @@ func (c *Config) applyDefaults() {
 		c.CompactionPrompt = DefaultCompactionPrompt
 	}
 	if strings.TrimSpace(c.SummaryModel) == "" {
-		c.SummaryModel = "glm-4.5-air"
+		c.SummaryModel = ProviderDefaults["zai"].Summary
 	}
 }
 
@@ -455,70 +450,52 @@ func GetConfigDir() string {
 // ModelFor returns the configured model for the given provider key, falling back to provider-appropriate defaults.
 func (c Config) ModelFor(provider string) string {
 	provider = strings.ToLower(provider)
-	
+
 	if len(c.ProviderModels) > 0 {
 		if model := strings.TrimSpace(c.ProviderModels[provider]); model != "" {
 			return model
 		}
 	}
-	
-	switch provider {
-	case "zai":
-		return DefaultZAIModel
-	case "openrouter":
-		return DefaultOpenRouterModel
-	case "mock":
-		return DefaultMockModel
-	default:
-		return c.Model
+
+	if defaults, ok := ProviderDefaults[provider]; ok {
+		return defaults.Main
 	}
+	return c.Model
 }
 
 // SummaryModelFor returns the configured summary model for the given provider key, falling back to provider-appropriate defaults.
 func (c Config) SummaryModelFor(provider string) string {
 	provider = strings.ToLower(provider)
-	
+
 	if len(c.ProviderSummaryModels) > 0 {
 		if model := strings.TrimSpace(c.ProviderSummaryModels[provider]); model != "" {
 			return model
 		}
 	}
-	
-	switch provider {
-	case "zai":
-		return DefaultZAISummaryModel
-	case "openrouter":
-		return DefaultOpenRouterSummaryModel
-	case "mock":
-		return DefaultMockSummaryModel
-	default:
-		return c.SummaryModel
+
+	if defaults, ok := ProviderDefaults[provider]; ok {
+		return defaults.Summary
 	}
+	return c.SummaryModel
 }
 
 // VLModelFor returns the appropriate VL (Vision Language) model for a provider
 func (c Config) VLModelFor(provider string) string {
 	provider = strings.ToLower(provider)
-	
+
 	if len(c.ProviderVLModels) > 0 {
 		if model := strings.TrimSpace(c.ProviderVLModels[provider]); model != "" {
 			return model
 		}
 	}
-	
-	switch provider {
-	case "zai":
-		return DefaultZAIVLModel
-	case "openrouter":
-		return DefaultOpenRouterVLModel
-	case "mock":
-		return DefaultMockVLModel
-	default:
-		if model := strings.TrimSpace(c.VLModel); model != "" {
-			return model
-		}
-		return DefaultOpenRouterVLModel
+
+	if defaults, ok := ProviderDefaults[provider]; ok {
+		return defaults.VL
 	}
+	if model := strings.TrimSpace(c.VLModel); model != "" {
+		return model
+	}
+	return ProviderDefaults["openrouter"].VL
 }
 
 // CalculateMessageThreshold returns the absolute character threshold for message compaction

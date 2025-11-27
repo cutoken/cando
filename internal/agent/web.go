@@ -106,8 +106,6 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/cancel", s.handleCancel)
 	mux.HandleFunc("/api/provider", s.handleProviderSwitch)
 	mux.HandleFunc("/api/provider/model", s.handleProviderModelUpdate)
-	mux.HandleFunc("/api/provider/summary-model", s.handleProviderSummaryModelUpdate)
-	mux.HandleFunc("/api/provider/vision-model", s.handleProviderVisionModelUpdate)
 	mux.HandleFunc("/api/compaction-history", s.handleCompactionHistory)
 	mux.HandleFunc("/api/credentials", s.handleCredentials)
 	mux.HandleFunc("/api/files", s.handleFileSearch)
@@ -599,6 +597,7 @@ func (s *webServer) handleProviderSwitch(w http.ResponseWriter, r *http.Request)
 	s.writeSessionPayload(w, r)
 }
 
+// handleProviderModelUpdate handles all model type updates (main, summary, vision)
 func (s *webServer) handleProviderModelUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
@@ -606,8 +605,9 @@ func (s *webServer) handleProviderModelUpdate(w http.ResponseWriter, r *http.Req
 	}
 
 	var req struct {
-		Provider string `json:"provider"`
-		Model    string `json:"model"`
+		Provider  string `json:"provider"`
+		ModelType string `json:"model_type"` // "main", "summary", or "vision"
+		Model     string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
@@ -619,66 +619,35 @@ func (s *webServer) handleProviderModelUpdate(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Update config
-	if s.agent.cfg.ProviderModels == nil {
-		s.agent.cfg.ProviderModels = make(map[string]string)
+	// Default to "main" if model_type not specified (backwards compatibility)
+	if req.ModelType == "" {
+		req.ModelType = "main"
 	}
-	s.agent.cfg.ProviderModels[req.Provider] = req.Model
 
-	// Save config to disk
-	if err := config.Save(s.agent.cfg); err != nil {
-		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
+	// Update the appropriate config field based on model type
+	switch req.ModelType {
+	case "main":
+		if s.agent.cfg.ProviderModels == nil {
+			s.agent.cfg.ProviderModels = make(map[string]string)
+		}
+		s.agent.cfg.ProviderModels[req.Provider] = req.Model
+	case "summary":
+		if s.agent.cfg.ProviderSummaryModels == nil {
+			s.agent.cfg.ProviderSummaryModels = make(map[string]string)
+		}
+		s.agent.cfg.ProviderSummaryModels[req.Provider] = req.Model
+		// Update current summary model if this is the active provider
+		if req.Provider == s.agent.cfg.Provider {
+			s.agent.cfg.SummaryModel = req.Model
+		}
+	case "vision":
+		if s.agent.cfg.ProviderVLModels == nil {
+			s.agent.cfg.ProviderVLModels = make(map[string]string)
+		}
+		s.agent.cfg.ProviderVLModels[req.Provider] = req.Model
+	default:
+		s.respondError(w, r, http.StatusBadRequest, "invalid model_type: must be main, summary, or vision")
 		return
-	}
-
-	s.logger.Printf("Updated %s model to %s", req.Provider, req.Model)
-
-	// Reload providers to pick up new model immediately
-	if err := s.agent.ReloadProviders(); err != nil {
-		s.logger.Printf("Warning: failed to reload providers after model change: %v", err)
-		s.writeJSON(w, r, map[string]any{
-			"success": true,
-			"message": "Model saved but provider reload failed. Please restart Cando.",
-		})
-		return
-	}
-
-	s.writeJSON(w, r, map[string]any{
-		"success": true,
-		"message": fmt.Sprintf("Model updated to %s! Change is active now.", req.Model),
-	})
-}
-
-func (s *webServer) handleProviderSummaryModelUpdate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var req struct {
-		Provider string `json:"provider"`
-		Model    string `json:"model"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
-		return
-	}
-
-	if req.Provider == "" || req.Model == "" {
-		s.respondError(w, r, http.StatusBadRequest, "provider and model are required")
-		return
-	}
-
-	// Update config
-	if s.agent.cfg.ProviderSummaryModels == nil {
-		s.agent.cfg.ProviderSummaryModels = make(map[string]string)
-	}
-	s.agent.cfg.ProviderSummaryModels[req.Provider] = req.Model
-
-	// Update the current summary model if this is the active provider
-	currentProvider := s.agent.cfg.Provider
-	if req.Provider == currentProvider {
-		s.agent.cfg.SummaryModel = req.Model
 	}
 
 	// Save config to disk
@@ -687,78 +656,18 @@ func (s *webServer) handleProviderSummaryModelUpdate(w http.ResponseWriter, r *h
 		return
 	}
 
-	s.logger.Printf("Updated %s summary model to %s", req.Provider, req.Model)
+	s.logger.Printf("Updated %s %s model to %s", req.Provider, req.ModelType, req.Model)
 
-	// Reload config to pick up new summary model
-	if err := s.agent.reloadConfig(s.agent.cfgPath); err != nil {
-		s.logger.Printf("Warning: failed to reload config after summary model change: %v", err)
-		s.writeJSON(w, r, map[string]any{
-			"success": true,
-			"message": "Summary model saved but config reload failed. Please restart Cando.",
-		})
-		return
+	// Reload providers for main model changes
+	if req.ModelType == "main" {
+		if err := s.agent.ReloadProviders(); err != nil {
+			s.logger.Printf("Warning: failed to reload providers after model change: %v", err)
+		}
 	}
 
 	s.writeJSON(w, r, map[string]any{
 		"success": true,
-		"message": fmt.Sprintf("Summary model updated to %s! Change is active now.", req.Model),
-	})
-}
-
-func (s *webServer) handleProviderVisionModelUpdate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var req struct {
-		Provider string `json:"provider"`
-		Model    string `json:"model"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
-		return
-	}
-
-	if req.Provider == "" || req.Model == "" {
-		s.respondError(w, r, http.StatusBadRequest, "provider and model are required")
-		return
-	}
-
-	if s.agent.credManager == nil {
-		s.respondError(w, r, http.StatusInternalServerError, "credential manager not available")
-		return
-	}
-
-	// Load existing credentials
-	creds, err := s.agent.credManager.Load()
-	if err != nil {
-		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to load credentials: %v", err))
-		return
-	}
-
-	// Check if provider exists
-	provider, ok := creds.Providers[req.Provider]
-	if !ok {
-		s.respondError(w, r, http.StatusBadRequest, fmt.Sprintf("provider %s not configured", req.Provider))
-		return
-	}
-
-	// Update vision model while preserving API key
-	provider.VisionModel = req.Model
-	creds.Providers[req.Provider] = provider
-
-	// Save updated credentials
-	if err := s.agent.credManager.Save(creds); err != nil {
-		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to save credentials: %v", err))
-		return
-	}
-
-	s.logger.Printf("Updated %s vision model to %s", req.Provider, req.Model)
-
-	s.writeJSON(w, r, map[string]any{
-		"success": true,
-		"message": fmt.Sprintf("Vision model updated to %s!", req.Model),
+		"message": fmt.Sprintf("%s model updated to %s!", req.ModelType, req.Model),
 	})
 }
 
@@ -825,7 +734,9 @@ type sessionPayload struct {
 	Model                 string            `json:"model"`
 	SummaryModel          string            `json:"summary_model,omitempty"`
 	Providers             []ProviderOption  `json:"providers,omitempty"`
+	ProviderModels        map[string]string `json:"provider_models,omitempty"`
 	ProviderSummaryModels map[string]string `json:"provider_summary_models,omitempty"`
+	ProviderVLModels      map[string]string `json:"provider_vl_models,omitempty"`
 	CurrentProvider       string            `json:"current_provider,omitempty"`
 	Plan                  *planSnapshot     `json:"plan,omitempty"`
 	PlanError             string            `json:"plan_error,omitempty"`
@@ -924,7 +835,7 @@ func (s *webServer) writeSessionPayload(w http.ResponseWriter, r *http.Request) 
 func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath string) (sessionPayload, error) {
 	providers, currentProvider := s.getProvidersFromDisk()
 	activeModel := s.agent.getActiveModel()
-	
+
 	payload := sessionPayload{
 		Thinking:              s.agent.thinkingEnabled,
 		ForceThinking:         s.agent.forceThinking,
@@ -934,7 +845,9 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 		Model:                 activeModel,
 		SummaryModel:          s.agent.cfg.SummaryModel,
 		Providers:             providers,
+		ProviderModels:        s.agent.cfg.ProviderModels,
 		ProviderSummaryModels: s.agent.cfg.ProviderSummaryModels,
+		ProviderVLModels:      s.agent.cfg.ProviderVLModels,
 		CurrentProvider:       currentProvider,
 	}
 	if s.workspaceManager != nil {
