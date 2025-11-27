@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"cando/internal/analytics"
 	"cando/internal/config"
 	"cando/internal/contextprofile"
 	"cando/internal/credentials"
@@ -145,6 +146,7 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/update", s.handleUpdate)
 	mux.HandleFunc("/api/restart", s.handleRestart)
 	mux.HandleFunc("/api/update/dismiss", s.handleUpdateDismiss)
+	mux.HandleFunc("/api/telemetry", s.handleTelemetry)
 
 	server := &http.Server{
 		Addr:    actualAddr,
@@ -899,6 +901,7 @@ type sessionPayload struct {
 	ProviderVLModels      map[string]string `json:"provider_vl_models,omitempty"`
 	CurrentProvider       string            `json:"current_provider,omitempty"`
 	OpenRouterFreeMode    bool              `json:"openrouter_free_mode,omitempty"`
+	AnalyticsEnabled      bool              `json:"analytics_enabled"`
 	Plan                  *planSnapshot     `json:"plan,omitempty"`
 	PlanError             string            `json:"plan_error,omitempty"`
 	Workdir               string            `json:"workdir,omitempty"`
@@ -1011,6 +1014,7 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 		ProviderVLModels:      s.agent.cfg.ProviderVLModels,
 		CurrentProvider:       currentProvider,
 		OpenRouterFreeMode:    s.agent.cfg.OpenRouterFreeMode,
+		AnalyticsEnabled:      s.agent.cfg.IsAnalyticsEnabled(),
 	}
 	if s.workspaceManager != nil {
 		payload.Workspaces = s.workspaceManager.List()
@@ -1346,6 +1350,7 @@ func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 			ContextConversationPercent *float64 `json:"context_conversation_percent"`
 			ContextProtectRecent       *int     `json:"context_protect_recent"`
 			OpenRouterFreeMode         *bool    `json:"openrouter_free_mode"`
+			AnalyticsEnabled           *bool    `json:"analytics_enabled"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1379,6 +1384,12 @@ func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 		// Update OpenRouter Free Mode if provided
 		if req.OpenRouterFreeMode != nil {
 			s.agent.cfg.OpenRouterFreeMode = *req.OpenRouterFreeMode
+		}
+
+		// Update Analytics if provided
+		if req.AnalyticsEnabled != nil {
+			s.agent.cfg.AnalyticsEnabled = req.AnalyticsEnabled
+			analytics.SetEnabled(*req.AnalyticsEnabled)
 		}
 
 		// Save to config file
@@ -2020,6 +2031,31 @@ func (s *webServer) handleUpdateDismiss(w http.ResponseWriter, r *http.Request) 
 	}
 
 	s.writeJSON(w, r, map[string]string{"status": "dismissed"})
+}
+
+func (s *webServer) handleTelemetry(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		UserAgent  string `json:"user_agent"`
+		ScreenSize string `json:"screen_size"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	// Update browser context for analytics
+	analytics.SetBrowserContext(req.UserAgent, req.ScreenSize)
+
+	// Track page view now that we have browser context
+	analytics.TrackPageView()
+
+	s.writeJSON(w, r, map[string]string{"status": "ok"})
 }
 
 func (s *webServer) handleUpdate(w http.ResponseWriter, r *http.Request) {

@@ -12,6 +12,7 @@
         <button class="tab-btn" data-tab="compaction">Compaction</button>
         <button class="tab-btn" data-tab="system">LLM Config</button>
         <button class="tab-btn" data-tab="appearance">Look & Feel</button>
+        <button class="tab-btn" data-tab="misc">Misc</button>
       </div>
 
       <div class="tab-content">
@@ -226,11 +227,36 @@
               </select>
             </div>
           </div>
+        </div>
+
+        <!-- Misc Tab -->
+        <div id="tab-misc" class="tab-pane">
           <div class="tab-section">
             <h3>Updates</h3>
             <div class="form-group">
               <button id="checkForUpdatesBtn" class="primary">Check for Updates</button>
               <small id="updateCheckStatus" class="help-text">Click to check for new versions</small>
+            </div>
+          </div>
+          <div class="tab-section">
+            <h3>Telemetry</h3>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="analyticsToggle" checked />
+                <span>Help improve Cando</span>
+              </label>
+              <small class="help-text">
+                We track: OS, architecture, app version, provider used.<br>
+                We DON'T track: messages, files, API keys, or personal data.<br>
+                This helps us know if there's enough usage to support your platform.
+              </small>
+            </div>
+          </div>
+          <div class="tab-section">
+            <h3>Issues</h3>
+            <div class="form-group">
+              <a href="https://github.com/cutoken/cando/issues" target="_blank" class="primary btn-link">Report an Issue</a>
+              <small class="help-text">Found a bug or have a feature request? Let us know on GitHub.</small>
             </div>
           </div>
         </div>

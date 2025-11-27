@@ -50,6 +50,7 @@ const ui = {
   currentChatLabel: null,
   newChatBtn: null,
   helpBtn: null,
+  analyticsToggle: null,
 };
 
 const appState = {
@@ -109,6 +110,7 @@ async function initUI() {
   ui.currentChatLabel = document.getElementById('currentChatLabel');
   ui.newChatBtn = document.getElementById('newChatBtn');
   ui.helpBtn = document.getElementById('helpBtn');
+  ui.analyticsToggle = document.getElementById('analyticsToggle');
 
   ui.promptForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -134,6 +136,9 @@ async function initUI() {
   }
   if (ui.systemPromptInput) {
     ui.systemPromptInput.addEventListener('blur', updateSystemPrompt);
+  }
+  if (ui.analyticsToggle) {
+    ui.analyticsToggle.addEventListener('change', toggleAnalytics);
   }
   ui.compactionHistoryBtn.addEventListener('click', showCompactionHistory);
   ui.closeCompactionDialog.addEventListener('click', closeCompactionHistory);
@@ -267,6 +272,7 @@ async function initUI() {
   initFileDragDrop();
   initProjects();
   initUpdateChecker();
+  sendTelemetry();
   updateStatusBar();
 
   document.addEventListener('keydown', handleGlobalKeydown);
@@ -1749,6 +1755,22 @@ async function toggleForceThinking() {
   render();
 }
 
+async function toggleAnalytics() {
+  if (!ui.analyticsToggle) return;
+  const enabled = ui.analyticsToggle.checked;
+  const res = await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ analytics_enabled: enabled }),
+  });
+  if (!res.ok) {
+    setStatus('Analytics toggle failed');
+    ui.analyticsToggle.checked = !enabled;
+    return;
+  }
+  appState.data = await res.json();
+}
+
 async function updateSystemPrompt() {
   if (!appState.data || !ui.systemPromptInput) return;
   const prompt = ui.systemPromptInput.value.trim();
@@ -2039,7 +2061,13 @@ async function openSettingsDialog() {
     updateProviderStatus();
     initializeProviderAccordions();
     populateSystemPrompt();
+    populateAnalyticsToggle();
   }
+}
+
+function populateAnalyticsToggle() {
+  if (!ui.analyticsToggle || !appState.data) return;
+  ui.analyticsToggle.checked = appState.data.analytics_enabled !== false;
 }
 
 function closeSettingsDialog() {
@@ -5214,6 +5242,48 @@ async function manualCheckForUpdates() {
     if (status) status.textContent = 'Failed to check for updates';
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// Send telemetry with browser context
+function sendTelemetry() {
+  // Only send if telemetry is enabled
+  if (appState.data && appState.data.analytics_enabled === false) {
+    return;
+  }
+
+  const screenSize = `${window.screen.width}x${window.screen.height}`;
+  const userAgent = navigator.userAgent;
+
+  // Send to backend for server-side tracking
+  fetch('/api/telemetry', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_agent: userAgent,
+      screen_size: screenSize,
+    }),
+  }).catch(() => {
+    // Silently ignore telemetry errors
+  });
+
+  // Dynamically load GoatCounter only if telemetry enabled
+  if (!window.goatcounter) {
+    window.goatcounter = {
+      endpoint: 'https://cando.goatcounter.com/count',
+      no_onload: true
+    };
+    const script = document.createElement('script');
+    script.async = true;
+    script.src = '//gc.zgo.at/count.js';
+    script.onload = () => {
+      if (window.goatcounter && window.goatcounter.count) {
+        window.goatcounter.count({ path: '/app/view', event: true });
+      }
+    };
+    document.body.appendChild(script);
+  } else if (window.goatcounter.count) {
+    window.goatcounter.count({ path: '/app/view', event: true });
   }
 }
 

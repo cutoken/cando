@@ -20,6 +20,7 @@ import (
 	"unicode"
 
 	"cando/internal/agent"
+	"cando/internal/analytics"
 	"cando/internal/config"
 	"cando/internal/contextprofile"
 	"cando/internal/credentials"
@@ -90,6 +91,10 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Initialize analytics (respects user preference, default on)
+	analytics.SetEnabled(cfg.IsAnalyticsEnabled())
+	analytics.TrackAppStart(Version)
+
 	// Override workspace if specified
 	if sandbox := strings.TrimSpace(*sandboxPath); sandbox != "" {
 		cfg.OverrideWorkspaceRoot(sandbox)
@@ -98,6 +103,11 @@ func main() {
 	// Determine provider from credentials (may be empty for first-run)
 	activeProvider := strings.ToLower(creds.DefaultProvider)
 	hasCredentials := creds.HasAnyProvider()
+
+	// Track which provider is being used
+	if hasCredentials && activeProvider != "" {
+		analytics.TrackProvider(activeProvider)
+	}
 
 	// Set up workspace
 	root := cfg.WorkspaceRoot

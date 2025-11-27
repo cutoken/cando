@@ -72,6 +72,15 @@ type Config struct {
 	ForceThinking         bool              `yaml:"force_thinking"`
 	CompactionPrompt      string            `yaml:"compaction_summary_prompt"`
 	OpenRouterFreeMode    bool              `yaml:"openrouter_free_mode"`
+	AnalyticsEnabled      *bool             `yaml:"analytics_enabled,omitempty"` // nil = default true
+}
+
+// IsAnalyticsEnabled returns true if analytics is enabled (default: true)
+func (c Config) IsAnalyticsEnabled() bool {
+	if c.AnalyticsEnabled == nil {
+		return true // default on
+	}
+	return *c.AnalyticsEnabled
 }
 
 // EnsureDefaultConfig creates config.yaml with provider-appropriate defaults if it doesn't exist
