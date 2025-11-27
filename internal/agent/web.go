@@ -13,7 +13,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -48,9 +50,9 @@ var templates *template.Template
 
 // OpenRouter models cache for daily refresh
 const (
-	openrouterModelsURL      = "https://openrouter.ai/api/frontend/models/find?order=top-weekly"
-	openrouterCacheDuration  = 24 * time.Hour
-	openrouterFetchTimeout   = 30 * time.Second
+	openrouterModelsURL     = "https://openrouter.ai/api/frontend/models/find?order=top-weekly"
+	openrouterCacheDuration = 24 * time.Hour
+	openrouterFetchTimeout  = 30 * time.Second
 )
 
 type openrouterModelCache struct {
@@ -81,6 +83,8 @@ type webServer struct {
 	logger           *log.Logger
 	actualAddr       string
 	workspaceManager *WorkspaceManager
+	httpServer       *http.Server
+	shutdownCh       chan struct{}
 }
 
 func (s *webServer) run(ctx context.Context) error {
@@ -136,14 +140,24 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/folder/create", s.handleFolderCreate)
 	mux.HandleFunc("/api/branch", s.handleBranch)
 	mux.HandleFunc("/api/project/instructions", s.handleProjectInstructions)
+	mux.HandleFunc("/api/health", s.handleHealth)
+	mux.HandleFunc("/api/update-check", s.handleUpdateCheck)
+	mux.HandleFunc("/api/update", s.handleUpdate)
+	mux.HandleFunc("/api/restart", s.handleRestart)
+	mux.HandleFunc("/api/update/dismiss", s.handleUpdateDismiss)
 
 	server := &http.Server{
 		Addr:    actualAddr,
 		Handler: s.logRequests(mux),
 	}
+	s.httpServer = server
+	s.shutdownCh = make(chan struct{})
 
 	go func() {
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-s.shutdownCh:
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
@@ -1919,4 +1933,338 @@ func (s *webServer) handleProjectInstructions(w http.ResponseWriter, r *http.Req
 	default:
 		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+// Update-related constants
+const (
+	githubRepoOwner       = "cutoken"
+	githubRepoName        = "cando"
+	updateCheckTimeout    = 10 * time.Second
+	updateDownloadTimeout = 120 * time.Second
+)
+
+func (s *webServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	s.writeJSON(w, r, map[string]string{"status": "ok"})
+}
+
+func (s *webServer) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	currentVersion := s.agent.version
+	forceCheck := r.URL.Query().Get("force") == "true"
+	isDev := currentVersion == "" || currentVersion == "dev"
+
+	// Load update state
+	state, err := config.LoadUpdateState()
+	if err != nil {
+		s.logger.Printf("failed to load update state: %v", err)
+		state = &config.UpdateState{}
+	}
+
+	// Check if dismissed (skip if force check or dev)
+	if !isDev && !forceCheck && state.IsDismissed() {
+		s.writeJSON(w, r, map[string]any{
+			"current":         currentVersion,
+			"latest":          state.LatestVersion,
+			"updateAvailable": false,
+			"dismissed":       true,
+			"isDev":           false,
+		})
+		return
+	}
+
+	// Check if we need to fetch new version info
+	latestVersion := state.LatestVersion
+	if forceCheck || state.NeedsCheck() {
+		if fetched, err := s.fetchLatestVersion(); err != nil {
+			s.logger.Printf("failed to fetch latest version: %v", err)
+		} else {
+			latestVersion = fetched
+			state.RecordCheck(latestVersion)
+			if err := state.Save(); err != nil {
+				s.logger.Printf("failed to save update state: %v", err)
+			}
+		}
+	}
+
+	// Dev versions can see latest but can't update
+	updateAvailable := !isDev && latestVersion != "" && compareVersions(latestVersion, currentVersion) > 0
+
+	s.writeJSON(w, r, map[string]any{
+		"current":         currentVersion,
+		"latest":          latestVersion,
+		"updateAvailable": updateAvailable,
+		"dismissed":       false,
+		"isDev":           isDev,
+	})
+}
+
+func (s *webServer) handleUpdateDismiss(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	state, err := config.LoadUpdateState()
+	if err != nil {
+		state = &config.UpdateState{}
+	}
+
+	state.Dismiss()
+	if err := state.Save(); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to save state: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, map[string]string{"status": "dismissed"})
+}
+
+func (s *webServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	currentVersion := s.agent.version
+	if currentVersion == "" || currentVersion == "dev" {
+		s.respondError(w, r, http.StatusBadRequest, "cannot update dev version")
+		return
+	}
+
+	// Get current binary path
+	binaryPath, err := os.Executable()
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to get executable path: %v", err))
+		return
+	}
+	binaryPath, err = filepath.EvalSymlinks(binaryPath)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to resolve symlinks: %v", err))
+		return
+	}
+
+	// Check if writable
+	if err := checkWritable(binaryPath); err != nil {
+		s.writeJSON(w, r, map[string]any{
+			"success":     false,
+			"needsManual": true,
+			"command":     "curl -fsSL https://raw.githubusercontent.com/" + githubRepoOwner + "/" + githubRepoName + "/main/install.sh | bash",
+			"message":     fmt.Sprintf("Binary not writable: %v", err),
+		})
+		return
+	}
+
+	// Download new binary
+	s.logger.Printf("downloading update...")
+	if err := s.downloadAndReplaceBinary(binaryPath); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("update failed: %v", err))
+		return
+	}
+
+	s.logger.Printf("update downloaded successfully")
+	s.writeJSON(w, r, map[string]any{
+		"success": true,
+		"message": "Update downloaded. Click Restart to apply.",
+	})
+}
+
+func (s *webServer) handleRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	s.triggerRestart(w, r)
+}
+
+func (s *webServer) triggerRestart(w http.ResponseWriter, r *http.Request) {
+	// Send response before restarting
+	s.writeJSON(w, r, map[string]string{"status": "restarting"})
+
+	// Give time for response to be sent, then exec directly
+	// We do exec BEFORE shutdown to avoid race with main() exiting
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+
+		// Print to stdout so user sees it in terminal
+		fmt.Println("\n🔄 Restarting Cando...")
+		s.logger.Printf("restarting application...")
+
+		// Exec new binary - this replaces the process immediately
+		binary, err := os.Executable()
+		if err != nil {
+			fmt.Printf("❌ Failed to get executable: %v\n", err)
+			s.logger.Printf("failed to get executable: %v", err)
+			os.Exit(1)
+		}
+
+		s.logger.Printf("exec: %s %v", binary, os.Args)
+
+		// syscall.Exec replaces current process, no need for graceful shutdown
+		// The OS will clean up the listening socket
+		if err := execBinary(binary, os.Args, os.Environ()); err != nil {
+			fmt.Printf("❌ Failed to restart: %v\n", err)
+			s.logger.Printf("failed to exec: %v", err)
+			os.Exit(1)
+		}
+	}()
+}
+
+func (s *webServer) fetchLatestVersion() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
+	defer cancel()
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubRepoOwner, githubRepoName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("github API returned %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", err
+	}
+
+	return release.TagName, nil
+}
+
+func (s *webServer) downloadAndReplaceBinary(binaryPath string) error {
+	// Detect platform
+	platform := fmt.Sprintf("%s-%s", getOS(), getArch())
+
+	// Construct download URL
+	state, _ := config.LoadUpdateState()
+	version := state.LatestVersion
+	if version == "" {
+		return fmt.Errorf("no version to download")
+	}
+
+	var downloadURL string
+	if strings.Contains(platform, "windows") {
+		downloadURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/cando-%s.exe",
+			githubRepoOwner, githubRepoName, version, platform)
+	} else {
+		downloadURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/cando-%s-bin",
+			githubRepoOwner, githubRepoName, version, platform)
+	}
+
+	s.logger.Printf("downloading from: %s", downloadURL)
+
+	// Download to temp file
+	ctx, cancel := context.WithTimeout(context.Background(), updateDownloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	}
+
+	// Create temp file in same directory (for atomic rename)
+	dir := filepath.Dir(binaryPath)
+	tmpFile, err := os.CreateTemp(dir, "cando-update-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath) // Clean up on error
+
+	// Copy download to temp file
+	_, err = io.Copy(tmpFile, resp.Body)
+	tmpFile.Close()
+	if err != nil {
+		return fmt.Errorf("failed to download: %w", err)
+	}
+
+	// Make executable
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		return fmt.Errorf("failed to chmod: %w", err)
+	}
+
+	// Atomic replace: backup old, rename new
+	backupPath := binaryPath + ".backup"
+	_ = os.Remove(backupPath) // Remove old backup if exists
+
+	if err := os.Rename(binaryPath, backupPath); err != nil {
+		return fmt.Errorf("failed to backup: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, binaryPath); err != nil {
+		// Try to restore backup
+		_ = os.Rename(backupPath, binaryPath)
+		return fmt.Errorf("failed to replace binary: %w", err)
+	}
+
+	s.logger.Printf("binary replaced successfully")
+	return nil
+}
+
+func checkWritable(path string) error {
+	file, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	file.Close()
+	return nil
+}
+
+func compareVersions(v1, v2 string) int {
+	// Strip 'v' prefix
+	v1 = strings.TrimPrefix(v1, "v")
+	v2 = strings.TrimPrefix(v2, "v")
+
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	for i := 0; i < len(parts1) && i < len(parts2); i++ {
+		n1, _ := strconv.Atoi(parts1[i])
+		n2, _ := strconv.Atoi(parts2[i])
+		if n1 > n2 {
+			return 1
+		}
+		if n1 < n2 {
+			return -1
+		}
+	}
+
+	if len(parts1) > len(parts2) {
+		return 1
+	}
+	if len(parts1) < len(parts2) {
+		return -1
+	}
+	return 0
+}
+
+func getOS() string {
+	return runtime.GOOS
+}
+
+func getArch() string {
+	return runtime.GOARCH
 }

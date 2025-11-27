@@ -266,6 +266,7 @@ async function initUI() {
   initAutocomplete();
   initFileDragDrop();
   initProjects();
+  initUpdateChecker();
   updateStatusBar();
 
   document.addEventListener('keydown', handleGlobalKeydown);
@@ -2017,6 +2018,12 @@ function initSettings() {
   const saveSystemPromptBtn = document.getElementById('saveSystemPrompt');
   if (saveSystemPromptBtn) {
     saveSystemPromptBtn.addEventListener('click', saveSystemPrompt);
+  }
+
+  // Check for updates button
+  const checkForUpdatesBtn = document.getElementById('checkForUpdatesBtn');
+  if (checkForUpdatesBtn) {
+    checkForUpdatesBtn.addEventListener('click', manualCheckForUpdates);
   }
 
   initHelpDialog();
@@ -4987,3 +4994,261 @@ async function deleteSession(key) {
     alert('Failed to delete session: ' + err.message);
   }
 }
+
+// ============================================
+// Update Checker
+// ============================================
+
+const updateUI = {};
+
+function initUpdateChecker() {
+  // Cache DOM elements
+  updateUI.dialog = document.getElementById('updateDialog');
+  updateUI.closeBtn = document.getElementById('closeUpdateDialog');
+  updateUI.currentVersion = document.getElementById('updateCurrentVersion');
+  updateUI.latestVersion = document.getElementById('updateLatestVersion');
+  updateUI.updateNowBtn = document.getElementById('updateNowBtn');
+  updateUI.dismissBtn = document.getElementById('updateDismissBtn');
+  updateUI.restartBtn = document.getElementById('updateRestartBtn');
+  updateUI.refreshBtn = document.getElementById('updateRefreshBtn');
+  updateUI.copyBtn = document.getElementById('updateCopyBtn');
+  updateUI.retryBtn = document.getElementById('updateRetryBtn');
+  updateUI.closeErrorBtn = document.getElementById('updateCloseErrorBtn');
+  updateUI.manualCommand = document.getElementById('updateManualCommand');
+  updateUI.errorMessage = document.getElementById('updateErrorMessage');
+
+  // Phases
+  updateUI.checkPhase = document.getElementById('updateCheckPhase');
+  updateUI.downloadPhase = document.getElementById('updateDownloadPhase');
+  updateUI.readyPhase = document.getElementById('updateReadyPhase');
+  updateUI.restartingPhase = document.getElementById('updateRestartingPhase');
+  updateUI.manualPhase = document.getElementById('updateManualPhase');
+  updateUI.errorPhase = document.getElementById('updateErrorPhase');
+
+  if (!updateUI.dialog) return;
+
+  // Event listeners
+  updateUI.closeBtn.addEventListener('click', closeUpdateDialog);
+  updateUI.dialog.addEventListener('click', (e) => {
+    if (e.target === updateUI.dialog) closeUpdateDialog();
+  });
+  updateUI.updateNowBtn.addEventListener('click', startUpdate);
+  updateUI.dismissBtn.addEventListener('click', dismissUpdate);
+  updateUI.restartBtn.addEventListener('click', restartApp);
+  updateUI.refreshBtn.addEventListener('click', () => window.location.reload());
+  updateUI.copyBtn.addEventListener('click', copyUpdateCommand);
+  updateUI.retryBtn.addEventListener('click', startUpdate);
+  updateUI.closeErrorBtn.addEventListener('click', closeUpdateDialog);
+
+  // Check for updates on load
+  checkForUpdates();
+}
+
+async function checkForUpdates() {
+  try {
+    const res = await fetch('/api/update-check');
+    if (!res.ok) return;
+
+    const data = await res.json();
+    if (data.isDev) {
+      console.log('Running dev version, skipping update check');
+      return;
+    }
+
+    if (data.updateAvailable && !data.dismissed) {
+      showUpdateDialog(data.current, data.latest);
+    }
+  } catch (err) {
+    console.error('Update check failed:', err);
+  }
+}
+
+function showUpdateDialog(current, latest) {
+  updateUI.currentVersion.textContent = current || '—';
+  updateUI.latestVersion.textContent = latest || '—';
+  showUpdatePhase('check');
+  updateUI.dialog.style.display = 'flex';
+}
+
+function closeUpdateDialog() {
+  updateUI.dialog.style.display = 'none';
+}
+
+function showUpdatePhase(phase) {
+  const phases = ['check', 'download', 'ready', 'restarting', 'manual', 'error'];
+  phases.forEach(p => {
+    const el = updateUI[p + 'Phase'];
+    if (el) el.style.display = p === phase ? 'block' : 'none';
+  });
+}
+
+async function dismissUpdate() {
+  try {
+    await fetch('/api/update/dismiss', { method: 'POST' });
+    closeUpdateDialog();
+  } catch (err) {
+    console.error('Dismiss failed:', err);
+    closeUpdateDialog();
+  }
+}
+
+async function startUpdate() {
+  showUpdatePhase('download');
+
+  try {
+    const res = await fetch('/api/update', { method: 'POST' });
+
+    // Handle non-JSON error responses
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok) {
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        throw new Error(data.message || 'Update failed');
+      } else {
+        const text = await res.text();
+        throw new Error(text || 'Update failed');
+      }
+    }
+
+    const data = await res.json();
+
+    if (data.needsManual) {
+      updateUI.manualCommand.textContent = data.command;
+      showUpdatePhase('manual');
+      return;
+    }
+
+    if (data.success) {
+      showUpdatePhase('ready');
+    } else {
+      throw new Error(data.message || 'Update failed');
+    }
+  } catch (err) {
+    console.error('Update error:', err);
+    updateUI.errorMessage.textContent = err.message;
+    showUpdatePhase('error');
+  }
+}
+
+async function restartApp() {
+  showUpdatePhase('restarting');
+
+  try {
+    await fetch('/api/restart', { method: 'POST' });
+
+    // Start polling for server to come back
+    setTimeout(pollForRestart, 2000);
+  } catch (err) {
+    // Expected - server is restarting
+    setTimeout(pollForRestart, 2000);
+  }
+}
+
+async function pollForRestart() {
+  const maxAttempts = 30;
+  let attempts = 0;
+
+  const poll = async () => {
+    try {
+      const res = await fetch('/api/health');
+      if (res.ok) {
+        // Server is back, reload page
+        window.location.reload();
+        return;
+      }
+    } catch (err) {
+      // Server not ready yet
+    }
+
+    attempts++;
+    if (attempts < maxAttempts) {
+      setTimeout(poll, 1500);
+    } else {
+      // Give up, show refresh button
+      console.log('Restart poll timeout, user can manually refresh');
+    }
+  };
+
+  poll();
+}
+
+function copyUpdateCommand() {
+  const command = updateUI.manualCommand.textContent;
+  navigator.clipboard.writeText(command).then(() => {
+    updateUI.copyBtn.textContent = 'Copied!';
+    setTimeout(() => {
+      updateUI.copyBtn.textContent = 'Copy Command';
+    }, 2000);
+  });
+}
+
+// Manual check for updates from settings
+async function manualCheckForUpdates() {
+  const btn = document.getElementById('checkForUpdatesBtn');
+  const status = document.getElementById('updateCheckStatus');
+
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Checking...';
+
+  try {
+    const res = await fetch('/api/update-check?force=true');
+    if (!res.ok) throw new Error('Check failed');
+
+    const data = await res.json();
+
+    if (data.isDev) {
+      if (status) status.textContent = 'Running development version';
+      return;
+    }
+
+    if (data.updateAvailable) {
+      if (status) status.textContent = `Update available: ${data.latest}`;
+      // Close settings and show update dialog
+      closeSettingsDialog();
+      showUpdateDialog(data.current, data.latest);
+    } else {
+      if (status) status.textContent = `You're up to date (${data.current})`;
+    }
+  } catch (err) {
+    console.error('Update check failed:', err);
+    if (status) status.textContent = 'Failed to check for updates';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Test function - call from browser console: testUpdateDialog()
+window.testUpdateDialog = function(current = 'v1.0.0', latest = 'v1.1.0') {
+  showUpdateDialog(current, latest);
+};
+
+// Simulate full update flow - call: testUpdateFlow()
+window.testUpdateFlow = async function() {
+  showUpdateDialog('v1.0.0', 'v1.1.0');
+
+  // Wait for user to click Update Now, then simulate phases
+  const originalStartUpdate = startUpdate;
+  window.startUpdate = async function() {
+    showUpdatePhase('download');
+    await new Promise(r => setTimeout(r, 2000)); // Simulate download
+    showUpdatePhase('ready');
+  };
+
+  // Restore after test
+  setTimeout(() => { window.startUpdate = originalStartUpdate; }, 30000);
+  console.log('Test mode active for 30s - click "Update Now" to simulate');
+};
+
+// Test manual update phase
+window.testManualUpdate = function() {
+  showUpdateDialog('v1.0.0', 'v1.1.0');
+  updateUI.manualCommand.textContent = 'curl -fsSL https://raw.githubusercontent.com/cutoken/cando/main/install.sh | bash';
+  showUpdatePhase('manual');
+};
+
+// Test restart UI flow (uses real /api/restart endpoint)
+window.testRealRestart = function() {
+  showUpdateDialog('v1.0.0', 'v1.1.0');
+  showUpdatePhase('ready'); // Skip to ready phase
+  console.log('Click "Restart Now" to trigger restart (uses real endpoint)');
+};

@@ -259,6 +259,64 @@
     </div>
   </div>
 
+  <!-- Update Available Dialog -->
+  <div id="updateDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content update-dialog">
+      <div class="dialog-header">
+        <h2>Update Available</h2>
+        <button id="closeUpdateDialog" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div id="updateCheckPhase" class="update-phase">
+          <p class="update-version-info">
+            <span>Current: <strong id="updateCurrentVersion">—</strong></span>
+            <span>Latest: <strong id="updateLatestVersion">—</strong></span>
+          </p>
+          <p class="update-description">A new version of Cando is available. Your session will be preserved.</p>
+          <div class="update-actions">
+            <button id="updateNowBtn" class="primary">Update Now</button>
+            <button id="updateDismissBtn" class="ghost">Go Away Demon</button>
+          </div>
+        </div>
+        <div id="updateDownloadPhase" class="update-phase" style="display: none;">
+          <p class="update-status">Downloading update...</p>
+          <div class="update-spinner"></div>
+        </div>
+        <div id="updateReadyPhase" class="update-phase" style="display: none;">
+          <p class="update-status">Update downloaded!</p>
+          <p class="update-description">Click below to restart with the new version.</p>
+          <div class="update-actions">
+            <button id="updateRestartBtn" class="primary">Restart Now</button>
+          </div>
+        </div>
+        <div id="updateRestartingPhase" class="update-phase" style="display: none;">
+          <p class="update-status">Restarting...</p>
+          <div class="update-spinner"></div>
+          <p class="update-hint">The page will reload automatically.</p>
+          <div class="update-actions">
+            <button id="updateRefreshBtn" class="ghost">Refresh Page</button>
+          </div>
+        </div>
+        <div id="updateManualPhase" class="update-phase" style="display: none;">
+          <p class="update-status">Manual update required</p>
+          <p class="update-description">The binary is not writable. Run this command to update:</p>
+          <pre id="updateManualCommand" class="update-command"></pre>
+          <div class="update-actions">
+            <button id="updateCopyBtn" class="ghost">Copy Command</button>
+          </div>
+        </div>
+        <div id="updateErrorPhase" class="update-phase" style="display: none;">
+          <p class="update-status update-error">Update failed</p>
+          <p id="updateErrorMessage" class="update-description"></p>
+          <div class="update-actions">
+            <button id="updateRetryBtn" class="primary">Retry</button>
+            <button id="updateCloseErrorBtn" class="ghost">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js" defer></script>
   <script src="/alpine.js" defer></script>

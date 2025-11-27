@@ -144,6 +144,7 @@ type Agent struct {
 	toolOpts         tooling.Options // Original tool options for workspace switching
 	activeProvider   string          // Provider name for creating workspace profiles
 	profileModel     string          // Model name for creating workspace profiles
+	version          string          // Application version for update checks
 
 	// Multi-workspace support for web mode
 	workspacesMu      sync.RWMutex
@@ -165,6 +166,7 @@ type Options struct {
 	ProviderBuilders map[string]ProviderBuilder
 	ActiveProvider   string // Provider name for creating workspace profiles
 	ProfileModel     string // Model name for creating workspace profiles
+	Version          string // Application version for update checks
 }
 
 // New returns a fully wired Agent ready for the REPL loop.
@@ -200,6 +202,7 @@ func New(client llm.Client, cfg config.Config, cfgPath string, mgr *state.Manage
 		toolOpts:          toolOpts,
 		activeProvider:    opts.ActiveProvider,
 		profileModel:      opts.ProfileModel,
+		version:           opts.Version,
 		workspaceContexts: make(map[string]*WorkspaceContext),
 	}
 
@@ -845,7 +848,7 @@ func (a *Agent) processToolCallsWithCallback(ctx context.Context, conv *state.Co
 		}
 		// Provide user feedback for long-running tools
 		logging.UserLog("Executing tool: %s", call.Function.Name)
-		
+
 		result, err := tool.Call(toolCtx, args)
 		if err != nil {
 			result = fmt.Sprintf("tool error: %v", err)

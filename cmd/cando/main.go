@@ -257,6 +257,7 @@ func main() {
 		ProviderBuilders: providerBuilders,
 		ActiveProvider:   activeProvider,
 		ProfileModel:     profileModel,
+		Version:          Version,
 	}, toolOpts)
 
 	// Handle one-shot prompt mode
