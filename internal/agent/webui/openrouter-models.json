@@ -62,21 +62,6 @@
     }
   },
   {
-    "id": "google/gemini-3-pro-preview",
-    "name": "Google: Gemini 3 Pro Preview",
-    "capabilities": [
-      "text",
-      "image",
-      "file",
-      "audio",
-      "video"
-    ],
-    "pricing": {
-      "prompt": "0.000002",
-      "completion": "0.000012"
-    }
-  },
-  {
     "id": "google/gemini-2.0-flash-001",
     "name": "Google: Gemini 2.0 Flash",
     "capabilities": [
@@ -89,6 +74,21 @@
     "pricing": {
       "prompt": "0.0000001",
       "completion": "0.0000004"
+    }
+  },
+  {
+    "id": "google/gemini-3-pro-preview",
+    "name": "Google: Gemini 3 Pro Preview",
+    "capabilities": [
+      "text",
+      "image",
+      "file",
+      "audio",
+      "video"
+    ],
+    "pricing": {
+      "prompt": "0.000002",
+      "completion": "0.000012"
     }
   },
   {
@@ -195,32 +195,6 @@
     }
   },
   {
-    "id": "deepseek/deepseek-chat-v3.1",
-    "name": "DeepSeek: DeepSeek V3.1",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000002",
-      "completion": "0.0000008"
-    }
-  },
-  {
-    "id": "google/gemini-2.5-flash-lite-preview-09-2025",
-    "name": "Google: Gemini 2.5 Flash Lite Preview 09-2025",
-    "capabilities": [
-      "text",
-      "image",
-      "file",
-      "audio",
-      "video"
-    ],
-    "pricing": {
-      "prompt": "0.0000001",
-      "completion": "0.0000004"
-    }
-  },
-  {
     "id": "openai/gpt-4o-mini",
     "name": "OpenAI: GPT-4o-mini",
     "capabilities": [
@@ -249,6 +223,32 @@
     }
   },
   {
+    "id": "google/gemini-2.5-flash-lite-preview-09-2025",
+    "name": "Google: Gemini 2.5 Flash Lite Preview 09-2025",
+    "capabilities": [
+      "text",
+      "image",
+      "file",
+      "audio",
+      "video"
+    ],
+    "pricing": {
+      "prompt": "0.0000001",
+      "completion": "0.0000004"
+    }
+  },
+  {
+    "id": "deepseek/deepseek-chat-v3.1",
+    "name": "DeepSeek: DeepSeek V3.1",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000002",
+      "completion": "0.0000008"
+    }
+  },
+  {
     "id": "tngtech/deepseek-r1t2-chimera:free",
     "name": "TNG: DeepSeek R1T2 Chimera (free)",
     "capabilities": [
@@ -257,6 +257,17 @@
     "pricing": {
       "prompt": "0",
       "completion": "0"
+    }
+  },
+  {
+    "id": "qwen/qwen3-next-80b-a3b-instruct",
+    "name": "Qwen: Qwen3 Next 80B A3B Instruct",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000001",
+      "completion": "0.0000008"
     }
   },
   {
@@ -273,28 +284,6 @@
     }
   },
   {
-    "id": "mistralai/mistral-nemo",
-    "name": "Mistral: Mistral Nemo",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000002",
-      "completion": "0.00000004"
-    }
-  },
-  {
-    "id": "qwen/qwen3-coder-30b-a3b-instruct",
-    "name": "Qwen: Qwen3 Coder 30B A3B Instruct",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000006",
-      "completion": "0.00000025"
-    }
-  },
-  {
     "id": "openai/gpt-oss-120b",
     "name": "OpenAI: gpt-oss-120b",
     "capabilities": [
@@ -306,15 +295,27 @@
     }
   },
   {
-    "id": "anthropic/claude-haiku-4.5",
-    "name": "Anthropic: Claude Haiku 4.5",
+    "id": "mistralai/mistral-nemo",
+    "name": "Mistral: Mistral Nemo",
     "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000002",
+      "completion": "0.00000004"
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-4.5",
+    "name": "Anthropic: Claude Opus 4.5",
+    "capabilities": [
+      "file",
       "image",
       "text"
     ],
     "pricing": {
-      "prompt": "0.000001",
-      "completion": "0.000005"
+      "prompt": "0.000005",
+      "completion": "0.000025"
     }
   },
   {
@@ -340,6 +341,18 @@
     }
   },
   {
+    "id": "anthropic/claude-haiku-4.5",
+    "name": "Anthropic: Claude Haiku 4.5",
+    "capabilities": [
+      "image",
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000001",
+      "completion": "0.000005"
+    }
+  },
+  {
     "id": "qwen/qwen3-235b-a22b-2507",
     "name": "Qwen: Qwen3 235B A22B Instruct 2507",
     "capabilities": [
@@ -348,19 +361,6 @@
     "pricing": {
       "prompt": "0.000000072",
       "completion": "0.000000464"
-    }
-  },
-  {
-    "id": "anthropic/claude-opus-4.5",
-    "name": "Anthropic: Claude Opus 4.5",
-    "capabilities": [
-      "file",
-      "image",
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000005",
-      "completion": "0.000025"
     }
   },
   {
@@ -377,14 +377,14 @@
     }
   },
   {
-    "id": "qwen/qwen3-next-80b-a3b-instruct",
-    "name": "Qwen: Qwen3 Next 80B A3B Instruct",
+    "id": "qwen/qwen3-coder-30b-a3b-instruct",
+    "name": "Qwen: Qwen3 Coder 30B A3B Instruct",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000001",
-      "completion": "0.0000008"
+      "prompt": "0.00000006",
+      "completion": "0.00000025"
     }
   },
   {
@@ -396,19 +396,6 @@
     "pricing": {
       "prompt": "0.00000003",
       "completion": "0.00000014"
-    }
-  },
-  {
-    "id": "anthropic/claude-3.7-sonnet",
-    "name": "Anthropic: Claude 3.7 Sonnet",
-    "capabilities": [
-      "text",
-      "image",
-      "file"
-    ],
-    "pricing": {
-      "prompt": "0.000003",
-      "completion": "0.000015"
     }
   },
   {
@@ -427,26 +414,16 @@
     }
   },
   {
-    "id": "qwen/qwen3-vl-235b-a22b-instruct",
-    "name": "Qwen: Qwen3 VL 235B A22B Instruct",
+    "id": "anthropic/claude-3.7-sonnet",
+    "name": "Anthropic: Claude 3.7 Sonnet",
     "capabilities": [
       "text",
-      "image"
+      "image",
+      "file"
     ],
     "pricing": {
-      "prompt": "0.00000021",
-      "completion": "0.0000019"
-    }
-  },
-  {
-    "id": "moonshotai/kimi-k2-thinking",
-    "name": "MoonshotAI: Kimi K2 Thinking",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000045",
-      "completion": "0.00000235"
+      "prompt": "0.000003",
+      "completion": "0.000015"
     }
   },
   {
@@ -460,6 +437,41 @@
     "pricing": {
       "prompt": "0.00000005",
       "completion": "0.0000004"
+    }
+  },
+  {
+    "id": "qwen/qwen3-vl-235b-a22b-instruct",
+    "name": "Qwen: Qwen3 VL 235B A22B Instruct",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0.00000021",
+      "completion": "0.0000019"
+    }
+  },
+  {
+    "id": "openrouter/bert-nebulon-alpha",
+    "name": "Bert-Nebulon Alpha",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    }
+  },
+  {
+    "id": "moonshotai/kimi-k2-thinking",
+    "name": "MoonshotAI: Kimi K2 Thinking",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000045",
+      "completion": "0.00000235"
     }
   },
   {
@@ -499,6 +511,17 @@
     }
   },
   {
+    "id": "deepseek/deepseek-r1-0528",
+    "name": "DeepSeek: R1 0528",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000002",
+      "completion": "0.0000045"
+    }
+  },
+  {
     "id": "qwen/qwen3-coder",
     "name": "Qwen: Qwen3 Coder 480B A35B",
     "capabilities": [
@@ -507,6 +530,17 @@
     "pricing": {
       "prompt": "0.00000022",
       "completion": "0.00000095"
+    }
+  },
+  {
+    "id": "deepseek/deepseek-v3.1-terminus",
+    "name": "DeepSeek: DeepSeek V3.1 Terminus",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000000216",
+      "completion": "0.0000008"
     }
   },
   {
@@ -522,28 +556,6 @@
     }
   },
   {
-    "id": "deepseek/deepseek-v3.1-terminus",
-    "name": "DeepSeek: DeepSeek V3.1 Terminus",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000000216",
-      "completion": "0.0000008"
-    }
-  },
-  {
-    "id": "deepseek/deepseek-r1-0528",
-    "name": "DeepSeek: R1 0528",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000002",
-      "completion": "0.0000045"
-    }
-  },
-  {
     "id": "openai/gpt-4.1-nano",
     "name": "OpenAI: GPT-4.1 Nano",
     "capabilities": [
@@ -554,29 +566,6 @@
     "pricing": {
       "prompt": "0.0000001",
       "completion": "0.0000004"
-    }
-  },
-  {
-    "id": "openrouter/bert-nebulon-alpha",
-    "name": "Bert-Nebulon Alpha",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0",
-      "completion": "0"
-    }
-  },
-  {
-    "id": "z-ai/glm-4.5-air:free",
-    "name": "Z.AI: GLM 4.5 Air (free)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0",
-      "completion": "0"
     }
   },
   {
@@ -594,6 +583,17 @@
   {
     "id": "tngtech/deepseek-r1t-chimera:free",
     "name": "TNG: DeepSeek R1T Chimera (free)",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    }
+  },
+  {
+    "id": "z-ai/glm-4.5-air:free",
+    "name": "Z.AI: GLM 4.5 Air (free)",
     "capabilities": [
       "text"
     ],
@@ -637,6 +637,28 @@
     }
   },
   {
+    "id": "z-ai/glm-4.5",
+    "name": "Z.AI: GLM 4.5",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000035",
+      "completion": "0.00000155"
+    }
+  },
+  {
+    "id": "x-ai/grok-3-mini",
+    "name": "xAI: Grok 3 Mini",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000003",
+      "completion": "0.0000005"
+    }
+  },
+  {
     "id": "anthropic/claude-3.5-haiku",
     "name": "Anthropic: Claude 3.5 Haiku",
     "capabilities": [
@@ -649,25 +671,14 @@
     }
   },
   {
-    "id": "z-ai/glm-4.5",
-    "name": "Z.AI: GLM 4.5",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000035",
-      "completion": "0.0000015"
-    }
-  },
-  {
-    "id": "x-ai/grok-3-mini",
-    "name": "xAI: Grok 3 Mini",
+    "id": "deepseek/deepseek-chat",
+    "name": "DeepSeek: DeepSeek V3",
     "capabilities": [
       "text"
     ],
     "pricing": {
       "prompt": "0.0000003",
-      "completion": "0.0000005"
+      "completion": "0.0000012"
     }
   },
   {
@@ -697,14 +708,15 @@
     }
   },
   {
-    "id": "deepseek/deepseek-chat",
-    "name": "DeepSeek: DeepSeek V3",
+    "id": "meta-llama/llama-4-scout",
+    "name": "Meta: Llama 4 Scout",
     "capabilities": [
-      "text"
+      "text",
+      "image"
     ],
     "pricing": {
-      "prompt": "0.0000003",
-      "completion": "0.0000012"
+      "prompt": "0.00000008",
+      "completion": "0.0000003"
     }
   },
   {
@@ -716,18 +728,6 @@
     "pricing": {
       "prompt": "0.00000002",
       "completion": "0.00000003"
-    }
-  },
-  {
-    "id": "meta-llama/llama-4-scout",
-    "name": "Meta: Llama 4 Scout",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.00000008",
-      "completion": "0.0000003"
     }
   },
   {
@@ -765,14 +765,15 @@
     }
   },
   {
-    "id": "moonshotai/kimi-k2",
-    "name": "MoonshotAI: Kimi K2 0711",
+    "id": "qwen/qwen3-vl-8b-instruct",
+    "name": "Qwen: Qwen3 VL 8B Instruct",
     "capabilities": [
+      "image",
       "text"
     ],
     "pricing": {
-      "prompt": "0.000000456",
-      "completion": "0.00000184"
+      "prompt": "0.000000064",
+      "completion": "0.0000004"
     }
   },
   {
@@ -789,28 +790,25 @@
     }
   },
   {
-    "id": "qwen/qwen3-vl-8b-instruct",
-    "name": "Qwen: Qwen3 VL 8B Instruct",
+    "id": "moonshotai/kimi-k2",
+    "name": "MoonshotAI: Kimi K2 0711",
     "capabilities": [
-      "image",
       "text"
     ],
     "pricing": {
-      "prompt": "0.000000064",
-      "completion": "0.0000004"
+      "prompt": "0.000000456",
+      "completion": "0.00000184"
     }
   },
   {
-    "id": "anthropic/claude-opus-4.1",
-    "name": "Anthropic: Claude Opus 4.1",
+    "id": "z-ai/glm-4.6:exacto",
+    "name": "Z.AI: GLM 4.6 (exacto)",
     "capabilities": [
-      "image",
-      "text",
-      "file"
+      "text"
     ],
     "pricing": {
-      "prompt": "0.000015",
-      "completion": "0.000075"
+      "prompt": "0.00000044",
+      "completion": "0.00000176"
     }
   },
   {
@@ -822,29 +820,6 @@
     "pricing": {
       "prompt": "0.0000003",
       "completion": "0.0000012"
-    }
-  },
-  {
-    "id": "z-ai/glm-4.6:exacto",
-    "name": "Z.AI: GLM 4.6 (exacto)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000045",
-      "completion": "0.0000019"
-    }
-  },
-  {
-    "id": "google/gemma-3-12b-it",
-    "name": "Google: Gemma 3 12B",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.00000003",
-      "completion": "0.0000001"
     }
   },
   {
@@ -861,26 +836,15 @@
     }
   },
   {
-    "id": "qwen/qwen-2.5-72b-instruct",
-    "name": "Qwen2.5 72B Instruct",
+    "id": "google/gemma-3-12b-it",
+    "name": "Google: Gemma 3 12B",
     "capabilities": [
-      "text"
+      "text",
+      "image"
     ],
     "pricing": {
-      "prompt": "0.00000007",
-      "completion": "0.00000026"
-    }
-  },
-  {
-    "id": "openai/gpt-5.1-codex-mini",
-    "name": "OpenAI: GPT-5.1-Codex-Mini",
-    "capabilities": [
-      "image",
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000025",
-      "completion": "0.000002"
+      "prompt": "0.00000003",
+      "completion": "0.0000001"
     }
   },
   {
@@ -897,6 +861,31 @@
     }
   },
   {
+    "id": "anthropic/claude-opus-4.1",
+    "name": "Anthropic: Claude Opus 4.1",
+    "capabilities": [
+      "image",
+      "text",
+      "file"
+    ],
+    "pricing": {
+      "prompt": "0.000015",
+      "completion": "0.000075"
+    }
+  },
+  {
+    "id": "openai/gpt-5.1-codex-mini",
+    "name": "OpenAI: GPT-5.1-Codex-Mini",
+    "capabilities": [
+      "image",
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000025",
+      "completion": "0.000002"
+    }
+  },
+  {
     "id": "meta-llama/llama-3.1-70b-instruct",
     "name": "Meta: Llama 3.1 70B Instruct",
     "capabilities": [
@@ -908,6 +897,17 @@
     }
   },
   {
+    "id": "qwen/qwen-2.5-72b-instruct",
+    "name": "Qwen2.5 72B Instruct",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000007",
+      "completion": "0.00000026"
+    }
+  },
+  {
     "id": "nvidia/nemotron-nano-9b-v2",
     "name": "NVIDIA: Nemotron Nano 9B V2",
     "capabilities": [
@@ -916,6 +916,17 @@
     "pricing": {
       "prompt": "0.00000004",
       "completion": "0.00000016"
+    }
+  },
+  {
+    "id": "mistralai/codestral-2508",
+    "name": "Mistral: Codestral 2508",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000003",
+      "completion": "0.0000009"
     }
   },
   {
@@ -931,17 +942,6 @@
     }
   },
   {
-    "id": "qwen/qwen-2.5-7b-instruct",
-    "name": "Qwen: Qwen2.5 7B Instruct",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000004",
-      "completion": "0.0000001"
-    }
-  },
-  {
     "id": "qwen/qwen3-30b-a3b",
     "name": "Qwen: Qwen3 30B A3B",
     "capabilities": [
@@ -953,14 +953,14 @@
     }
   },
   {
-    "id": "qwen/qwen3-coder:free",
-    "name": "Qwen: Qwen3 Coder 480B A35B (free)",
+    "id": "qwen/qwen3-235b-a22b-thinking-2507",
+    "name": "Qwen: Qwen3 235B A22B Thinking 2507",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0",
-      "completion": "0"
+      "prompt": "0.00000011",
+      "completion": "0.0000006"
     }
   },
   {
@@ -975,14 +975,37 @@
     }
   },
   {
-    "id": "qwen/qwen3-235b-a22b-thinking-2507",
-    "name": "Qwen: Qwen3 235B A22B Thinking 2507",
+    "id": "qwen/qwen3-coder:free",
+    "name": "Qwen: Qwen3 Coder 480B A35B (free)",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000011",
-      "completion": "0.0000006"
+      "prompt": "0",
+      "completion": "0"
+    }
+  },
+  {
+    "id": "google/gemini-3-pro-image-preview",
+    "name": "Google: Nano Banana Pro (Gemini 3 Pro Image Preview)",
+    "capabilities": [
+      "image",
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000002",
+      "completion": "0.000012"
+    }
+  },
+  {
+    "id": "qwen/qwen-2.5-7b-instruct",
+    "name": "Qwen: Qwen2.5 7B Instruct",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000004",
+      "completion": "0.0000001"
     }
   },
   {
@@ -1008,18 +1031,6 @@
     }
   },
   {
-    "id": "openai/gpt-5-codex",
-    "name": "OpenAI: GPT-5 Codex",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.00000125",
-      "completion": "0.00001"
-    }
-  },
-  {
     "id": "qwen/qwen3-30b-a3b-instruct-2507",
     "name": "Qwen: Qwen3 30B A3B Instruct 2507",
     "capabilities": [
@@ -1042,15 +1053,15 @@
     }
   },
   {
-    "id": "google/gemini-3-pro-image-preview",
-    "name": "Google: Nano Banana Pro (Gemini 3 Pro Image Preview)",
+    "id": "openai/gpt-5-codex",
+    "name": "OpenAI: GPT-5 Codex",
     "capabilities": [
-      "image",
-      "text"
+      "text",
+      "image"
     ],
     "pricing": {
-      "prompt": "0.000002",
-      "completion": "0.000012"
+      "prompt": "0.00000125",
+      "completion": "0.00001"
     }
   },
   {
@@ -1077,38 +1088,15 @@
     }
   },
   {
-    "id": "mistralai/codestral-2508",
-    "name": "Mistral: Codestral 2508",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000003",
-      "completion": "0.0000009"
-    }
-  },
-  {
-    "id": "deepseek/deepseek-v3.1-terminus:exacto",
-    "name": "DeepSeek: DeepSeek V3.1 Terminus (exacto)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000000216",
-      "completion": "0.0000008"
-    }
-  },
-  {
-    "id": "anthropic/claude-3.7-sonnet:thinking",
-    "name": "Anthropic: Claude 3.7 Sonnet (thinking)",
+    "id": "qwen/qwen3-vl-30b-a3b-instruct",
+    "name": "Qwen: Qwen3 VL 30B A3B Instruct",
     "capabilities": [
       "text",
-      "image",
-      "file"
+      "image"
     ],
     "pricing": {
-      "prompt": "0.000003",
-      "completion": "0.000015"
+      "prompt": "0.00000015",
+      "completion": "0.0000006"
     }
   },
   {
@@ -1124,17 +1112,6 @@
     }
   },
   {
-    "id": "microsoft/wizardlm-2-8x22b",
-    "name": "WizardLM-2 8x22B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000048",
-      "completion": "0.00000048"
-    }
-  },
-  {
     "id": "qwen/qwen3-max",
     "name": "Qwen: Qwen3 Max",
     "capabilities": [
@@ -1143,6 +1120,17 @@
     "pricing": {
       "prompt": "0.0000012",
       "completion": "0.000006"
+    }
+  },
+  {
+    "id": "google/gemma-3n-e4b-it",
+    "name": "Google: Gemma 3n 4B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000002",
+      "completion": "0.00000004"
     }
   },
   {
@@ -1157,10 +1145,11 @@
     }
   },
   {
-    "id": "meituan/longcat-flash-chat:free",
-    "name": "Meituan: LongCat Flash Chat (free)",
+    "id": "google/gemma-3-27b-it:free",
+    "name": "Google: Gemma 3 27B (free)",
     "capabilities": [
-      "text"
+      "text",
+      "image"
     ],
     "pricing": {
       "prompt": "0",
@@ -1168,11 +1157,10 @@
     }
   },
   {
-    "id": "google/gemma-3-27b-it:free",
-    "name": "Google: Gemma 3 27B (free)",
+    "id": "meituan/longcat-flash-chat:free",
+    "name": "Meituan: LongCat Flash Chat (free)",
     "capabilities": [
-      "text",
-      "image"
+      "text"
     ],
     "pricing": {
       "prompt": "0",
@@ -1191,15 +1179,16 @@
     }
   },
   {
-    "id": "qwen/qwen3-vl-30b-a3b-instruct",
-    "name": "Qwen: Qwen3 VL 30B A3B Instruct",
+    "id": "openai/gpt-5.1-chat",
+    "name": "OpenAI: GPT-5.1 Chat",
     "capabilities": [
-      "text",
-      "image"
+      "file",
+      "image",
+      "text"
     ],
     "pricing": {
-      "prompt": "0.00000015",
-      "completion": "0.0000006"
+      "prompt": "0.00000125",
+      "completion": "0.00001"
     }
   },
   {
@@ -1227,6 +1216,17 @@
     }
   },
   {
+    "id": "microsoft/wizardlm-2-8x22b",
+    "name": "WizardLM-2 8x22B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000048",
+      "completion": "0.00000048"
+    }
+  },
+  {
     "id": "meta-llama/llama-3.3-70b-instruct:free",
     "name": "Meta: Llama 3.3 70B Instruct (free)",
     "capabilities": [
@@ -1235,19 +1235,6 @@
     "pricing": {
       "prompt": "0",
       "completion": "0"
-    }
-  },
-  {
-    "id": "openai/gpt-5.1-chat",
-    "name": "OpenAI: GPT-5.1 Chat",
-    "capabilities": [
-      "file",
-      "image",
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000125",
-      "completion": "0.00001"
     }
   },
   {
@@ -1262,6 +1249,28 @@
     }
   },
   {
+    "id": "deepseek/deepseek-v3.1-terminus:exacto",
+    "name": "DeepSeek: DeepSeek V3.1 Terminus (exacto)",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000000216",
+      "completion": "0.0000008"
+    }
+  },
+  {
+    "id": "alibaba/tongyi-deepresearch-30b-a3b",
+    "name": "Tongyi DeepResearch 30B A3B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000009",
+      "completion": "0.0000004"
+    }
+  },
+  {
     "id": "gryphe/mythomax-l2-13b",
     "name": "MythoMax 13B",
     "capabilities": [
@@ -1270,17 +1279,6 @@
     "pricing": {
       "prompt": "0.00000006",
       "completion": "0.00000006"
-    }
-  },
-  {
-    "id": "google/gemma-3n-e4b-it",
-    "name": "Google: Gemma 3n 4B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000002",
-      "completion": "0.00000004"
     }
   },
   {
@@ -1295,36 +1293,27 @@
     }
   },
   {
-    "id": "liquid/lfm2-8b-a1b",
-    "name": "LiquidAI/LFM2-8B-A1B",
+    "id": "anthropic/claude-3.7-sonnet:thinking",
+    "name": "Anthropic: Claude 3.7 Sonnet (thinking)",
     "capabilities": [
-      "text"
+      "text",
+      "image",
+      "file"
     ],
     "pricing": {
-      "prompt": "0.00000005",
-      "completion": "0.0000001"
+      "prompt": "0.000003",
+      "completion": "0.000015"
     }
   },
   {
-    "id": "openai/gpt-oss-120b:exacto",
-    "name": "OpenAI: gpt-oss-120b (exacto)",
+    "id": "meituan/longcat-flash-chat",
+    "name": "Meituan: LongCat Flash Chat",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000004",
-      "completion": "0.0000002"
-    }
-  },
-  {
-    "id": "moonshotai/kimi-k2-0905:exacto",
-    "name": "MoonshotAI: Kimi K2 0905 (exacto)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000006",
-      "completion": "0.0000025"
+      "prompt": "0.00000015",
+      "completion": "0.00000075"
     }
   },
   {
@@ -1340,6 +1329,50 @@
     }
   },
   {
+    "id": "openai/gpt-oss-120b:exacto",
+    "name": "OpenAI: gpt-oss-120b (exacto)",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000004",
+      "completion": "0.0000002"
+    }
+  },
+  {
+    "id": "mistralai/ministral-8b",
+    "name": "Mistral: Ministral 8B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000001",
+      "completion": "0.0000001"
+    }
+  },
+  {
+    "id": "mistralai/mixtral-8x7b-instruct",
+    "name": "Mistral: Mixtral 8x7B Instruct",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000054",
+      "completion": "0.00000054"
+    }
+  },
+  {
+    "id": "mistralai/mistral-tiny",
+    "name": "Mistral Tiny",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000025",
+      "completion": "0.00000025"
+    }
+  },
+  {
     "id": "qwen/qwen2.5-vl-32b-instruct",
     "name": "Qwen: Qwen2.5 VL 32B Instruct",
     "capabilities": [
@@ -1352,47 +1385,14 @@
     }
   },
   {
-    "id": "meituan/longcat-flash-chat",
-    "name": "Meituan: LongCat Flash Chat",
+    "id": "openai/gpt-oss-safeguard-20b",
+    "name": "OpenAI: gpt-oss-safeguard-20b",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000015",
-      "completion": "0.00000075"
-    }
-  },
-  {
-    "id": "alibaba/tongyi-deepresearch-30b-a3b",
-    "name": "Tongyi DeepResearch 30B A3B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000009",
-      "completion": "0.0000004"
-    }
-  },
-  {
-    "id": "qwen/qwen3-235b-a22b:free",
-    "name": "Qwen: Qwen3 235B A22B (free)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0",
-      "completion": "0"
-    }
-  },
-  {
-    "id": "mistralai/mixtral-8x7b-instruct",
-    "name": "Mistral: Mixtral 8x7B Instruct",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000054",
-      "completion": "0.00000054"
+      "prompt": "0.000000075",
+      "completion": "0.0000003"
     }
   },
   {
@@ -1409,27 +1409,14 @@
     }
   },
   {
-    "id": "mistralai/mistral-tiny",
-    "name": "Mistral Tiny",
+    "id": "qwen/qwen3-235b-a22b:free",
+    "name": "Qwen: Qwen3 235B A22B (free)",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000025",
-      "completion": "0.00000025"
-    }
-  },
-  {
-    "id": "openai/gpt-4o-2024-11-20",
-    "name": "OpenAI: GPT-4o (2024-11-20)",
-    "capabilities": [
-      "text",
-      "image",
-      "file"
-    ],
-    "pricing": {
-      "prompt": "0.0000025",
-      "completion": "0.00001"
+      "prompt": "0",
+      "completion": "0"
     }
   },
   {
@@ -1441,40 +1428,6 @@
     "pricing": {
       "prompt": "0.000001",
       "completion": "0.000001"
-    }
-  },
-  {
-    "id": "mistralai/ministral-8b",
-    "name": "Mistral: Ministral 8B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000001",
-      "completion": "0.0000001"
-    }
-  },
-  {
-    "id": "openai/gpt-oss-safeguard-20b",
-    "name": "OpenAI: gpt-oss-safeguard-20b",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000000075",
-      "completion": "0.0000003"
-    }
-  },
-  {
-    "id": "google/gemini-2.0-flash-exp:free",
-    "name": "Google: Gemini 2.0 Flash Experimental (free)",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0",
-      "completion": "0"
     }
   },
   {
@@ -1491,39 +1444,6 @@
     }
   },
   {
-    "id": "thedrummer/unslopnemo-12b",
-    "name": "TheDrummer: UnslopNemo 12B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000004",
-      "completion": "0.0000004"
-    }
-  },
-  {
-    "id": "tngtech/deepseek-r1t-chimera",
-    "name": "TNG: DeepSeek R1T Chimera",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000003",
-      "completion": "0.0000012"
-    }
-  },
-  {
-    "id": "google/gemma-2-9b-it",
-    "name": "Google: Gemma 2 9B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000003",
-      "completion": "0.00000009"
-    }
-  },
-  {
     "id": "openai/o3-mini",
     "name": "OpenAI: o3 Mini",
     "capabilities": [
@@ -1536,14 +1456,14 @@
     }
   },
   {
-    "id": "thedrummer/skyfall-36b-v2",
-    "name": "TheDrummer: Skyfall 36B V2",
+    "id": "moonshotai/kimi-k2-0905:exacto",
+    "name": "MoonshotAI: Kimi K2 0905 (exacto)",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000005",
-      "completion": "0.0000008"
+      "prompt": "0.0000006",
+      "completion": "0.0000025"
     }
   },
   {
@@ -1558,14 +1478,116 @@
     }
   },
   {
-    "id": "qwen/qwen3-8b",
-    "name": "Qwen: Qwen3 8B",
+    "id": "thedrummer/unslopnemo-12b",
+    "name": "TheDrummer: UnslopNemo 12B",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.000000028",
-      "completion": "0.0000001104"
+      "prompt": "0.0000004",
+      "completion": "0.0000004"
+    }
+  },
+  {
+    "id": "thedrummer/skyfall-36b-v2",
+    "name": "TheDrummer: Skyfall 36B V2",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000005",
+      "completion": "0.0000008"
+    }
+  },
+  {
+    "id": "liquid/lfm2-8b-a1b",
+    "name": "LiquidAI/LFM2-8B-A1B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000005",
+      "completion": "0.0000001"
+    }
+  },
+  {
+    "id": "google/gemma-2-9b-it",
+    "name": "Google: Gemma 2 9B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000003",
+      "completion": "0.00000009"
+    }
+  },
+  {
+    "id": "google/gemini-2.0-flash-exp:free",
+    "name": "Google: Gemini 2.0 Flash Experimental (free)",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    }
+  },
+  {
+    "id": "tngtech/deepseek-r1t-chimera",
+    "name": "TNG: DeepSeek R1T Chimera",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000003",
+      "completion": "0.0000012"
+    }
+  },
+  {
+    "id": "openai/gpt-4o-2024-11-20",
+    "name": "OpenAI: GPT-4o (2024-11-20)",
+    "capabilities": [
+      "text",
+      "image",
+      "file"
+    ],
+    "pricing": {
+      "prompt": "0.0000025",
+      "completion": "0.00001"
+    }
+  },
+  {
+    "id": "meta-llama/llama-3-8b-instruct",
+    "name": "Meta: Llama 3 8B Instruct",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000003",
+      "completion": "0.00000006"
+    }
+  },
+  {
+    "id": "mistralai/devstral-small",
+    "name": "Mistral: Devstral Small 1.1",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000007",
+      "completion": "0.00000028"
+    }
+  },
+  {
+    "id": "thedrummer/rocinante-12b",
+    "name": "TheDrummer: Rocinante 12B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000017",
+      "completion": "0.00000043"
     }
   },
   {
@@ -1580,14 +1602,26 @@
     }
   },
   {
-    "id": "thedrummer/rocinante-12b",
-    "name": "TheDrummer: Rocinante 12B",
+    "id": "qwen/qwen3-8b",
+    "name": "Qwen: Qwen3 8B",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000017",
-      "completion": "0.00000043"
+      "prompt": "0.000000028",
+      "completion": "0.0000001104"
+    }
+  },
+  {
+    "id": "openai/chatgpt-4o-latest",
+    "name": "OpenAI: ChatGPT-4o",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0.000005",
+      "completion": "0.000015"
     }
   },
   {
@@ -1613,6 +1647,17 @@
     }
   },
   {
+    "id": "qwen/qwen3-coder-plus",
+    "name": "Qwen: Qwen3 Coder Plus",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000001",
+      "completion": "0.000005"
+    }
+  },
+  {
     "id": "openai/gpt-4o-2024-08-06",
     "name": "OpenAI: GPT-4o (2024-08-06)",
     "capabilities": [
@@ -1623,29 +1668,6 @@
     "pricing": {
       "prompt": "0.0000025",
       "completion": "0.00001"
-    }
-  },
-  {
-    "id": "meta-llama/llama-3-8b-instruct",
-    "name": "Meta: Llama 3 8B Instruct",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000003",
-      "completion": "0.00000006"
-    }
-  },
-  {
-    "id": "openai/chatgpt-4o-latest",
-    "name": "OpenAI: ChatGPT-4o",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.000005",
-      "completion": "0.000015"
     }
   },
   {
@@ -1660,17 +1682,6 @@
     }
   },
   {
-    "id": "qwen/qwen3-coder-plus",
-    "name": "Qwen: Qwen3 Coder Plus",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000001",
-      "completion": "0.000005"
-    }
-  },
-  {
     "id": "mistralai/ministral-3b",
     "name": "Mistral: Ministral 3B",
     "capabilities": [
@@ -1682,17 +1693,6 @@
     }
   },
   {
-    "id": "qwen/qwen3-next-80b-a3b-thinking",
-    "name": "Qwen: Qwen3 Next 80B A3B Thinking",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000012",
-      "completion": "0.0000012"
-    }
-  },
-  {
     "id": "qwen/qwen-2.5-coder-32b-instruct",
     "name": "Qwen2.5 Coder 32B Instruct",
     "capabilities": [
@@ -1701,6 +1701,17 @@
     "pricing": {
       "prompt": "0.00000003",
       "completion": "0.00000011"
+    }
+  },
+  {
+    "id": "amazon/nova-micro-v1",
+    "name": "Amazon: Nova Micro 1.0",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000000035",
+      "completion": "0.00000014"
     }
   },
   {
@@ -1716,14 +1727,36 @@
     }
   },
   {
-    "id": "morph/morph-v3-large",
-    "name": "Morph: Morph V3 Large",
+    "id": "mistralai/devstral-medium",
+    "name": "Mistral: Devstral Medium",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000009",
-      "completion": "0.0000019"
+      "prompt": "0.0000004",
+      "completion": "0.000002"
+    }
+  },
+  {
+    "id": "qwen/qwen3-next-80b-a3b-thinking",
+    "name": "Qwen: Qwen3 Next 80B A3B Thinking",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000012",
+      "completion": "0.0000012"
+    }
+  },
+  {
+    "id": "mistralai/devstral-small-2505",
+    "name": "Mistral: Devstral Small 2505",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000006",
+      "completion": "0.00000012"
     }
   },
   {
@@ -1738,15 +1771,14 @@
     }
   },
   {
-    "id": "google/gemini-2.5-flash-image-preview",
-    "name": "Google: Gemini 2.5 Flash Image Preview (Nano Banana)",
+    "id": "tngtech/tng-r1t-chimera:free",
+    "name": "TNG: R1T Chimera (free)",
     "capabilities": [
-      "image",
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000003",
-      "completion": "0.0000025"
+      "prompt": "0",
+      "completion": "0"
     }
   },
   {
@@ -1761,14 +1793,14 @@
     }
   },
   {
-    "id": "mistralai/devstral-small",
-    "name": "Mistral: Devstral Small 1.1",
+    "id": "morph/morph-v3-large",
+    "name": "Morph: Morph V3 Large",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000007",
-      "completion": "0.00000028"
+      "prompt": "0.0000009",
+      "completion": "0.0000019"
     }
   },
   {
@@ -1795,6 +1827,18 @@
     }
   },
   {
+    "id": "google/gemini-2.5-flash-image-preview",
+    "name": "Google: Gemini 2.5 Flash Image Preview (Nano Banana)",
+    "capabilities": [
+      "image",
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000003",
+      "completion": "0.0000025"
+    }
+  },
+  {
     "id": "qwen/qwen3-vl-235b-a22b-thinking",
     "name": "Qwen: Qwen3 VL 235B A22B Thinking",
     "capabilities": [
@@ -1807,28 +1851,6 @@
     }
   },
   {
-    "id": "amazon/nova-micro-v1",
-    "name": "Amazon: Nova Micro 1.0",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000000035",
-      "completion": "0.00000014"
-    }
-  },
-  {
-    "id": "qwen/qwen3-coder:exacto",
-    "name": "Qwen: Qwen3 Coder 480B A35B (exacto)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000038",
-      "completion": "0.00000153"
-    }
-  },
-  {
     "id": "meta-llama/llama-3-70b-instruct",
     "name": "Meta: Llama 3 70B Instruct",
     "capabilities": [
@@ -1836,6 +1858,17 @@
     ],
     "pricing": {
       "prompt": "0.0000003",
+      "completion": "0.0000004"
+    }
+  },
+  {
+    "id": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    "name": "NVIDIA: Llama 3.3 Nemotron Super 49B V1.5",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000001",
       "completion": "0.0000004"
     }
   },
@@ -1852,14 +1885,25 @@
     }
   },
   {
-    "id": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
-    "name": "NVIDIA: Llama 3.3 Nemotron Super 49B V1.5",
+    "id": "qwen/qwen-turbo",
+    "name": "Qwen: Qwen-Turbo",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000001",
-      "completion": "0.0000004"
+      "prompt": "0.00000005",
+      "completion": "0.0000002"
+    }
+  },
+  {
+    "id": "qwen/qwen3-30b-a3b-thinking-2507",
+    "name": "Qwen: Qwen3 30B A3B Thinking 2507",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000000051",
+      "completion": "0.00000034"
     }
   },
   {
@@ -1873,17 +1917,6 @@
     "pricing": {
       "prompt": "0.000002",
       "completion": "0.000008"
-    }
-  },
-  {
-    "id": "qwen/qwen3-30b-a3b-thinking-2507",
-    "name": "Qwen: Qwen3 30B A3B Thinking 2507",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000000051",
-      "completion": "0.00000034"
     }
   },
   {
@@ -1933,6 +1966,50 @@
     }
   },
   {
+    "id": "prime-intellect/intellect-3",
+    "name": "Prime Intellect: INTELLECT-3",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000002",
+      "completion": "0.0000011"
+    }
+  },
+  {
+    "id": "qwen/qwen3-coder:exacto",
+    "name": "Qwen: Qwen3 Coder 480B A35B (exacto)",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000038",
+      "completion": "0.00000153"
+    }
+  },
+  {
+    "id": "mistralai/mistral-7b-instruct",
+    "name": "Mistral: Mistral 7B Instruct",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000000028",
+      "completion": "0.000000054"
+    }
+  },
+  {
+    "id": "allenai/olmo-3-32b-think",
+    "name": "AllenAI: Olmo 3 32B Think",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000003",
+      "completion": "0.00000055"
+    }
+  },
+  {
     "id": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
     "name": "Venice: Uncensored (free)",
     "capabilities": [
@@ -1955,25 +2032,14 @@
     }
   },
   {
-    "id": "mistralai/mistral-7b-instruct-v0.3",
-    "name": "Mistral: Mistral 7B Instruct v0.3",
+    "id": "openai/gpt-3.5-turbo",
+    "name": "OpenAI: GPT-3.5 Turbo",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000002",
-      "completion": "0.0000002"
-    }
-  },
-  {
-    "id": "mistralai/mistral-7b-instruct",
-    "name": "Mistral: Mistral 7B Instruct",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000000028",
-      "completion": "0.000000054"
+      "prompt": "0.0000005",
+      "completion": "0.0000015"
     }
   },
   {
@@ -2000,28 +2066,6 @@
     }
   },
   {
-    "id": "mistralai/devstral-medium",
-    "name": "Mistral: Devstral Medium",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000004",
-      "completion": "0.000002"
-    }
-  },
-  {
-    "id": "openai/gpt-3.5-turbo",
-    "name": "OpenAI: GPT-3.5 Turbo",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000005",
-      "completion": "0.0000015"
-    }
-  },
-  {
     "id": "ibm-granite/granite-4.0-h-micro",
     "name": "IBM: Granite 4.0 Micro",
     "capabilities": [
@@ -2030,39 +2074,6 @@
     "pricing": {
       "prompt": "0.000000017",
       "completion": "0.00000011"
-    }
-  },
-  {
-    "id": "mistralai/devstral-small-2505",
-    "name": "Mistral: Devstral Small 2505",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000006",
-      "completion": "0.00000012"
-    }
-  },
-  {
-    "id": "qwen/qwen-turbo",
-    "name": "Qwen: Qwen-Turbo",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000005",
-      "completion": "0.0000002"
-    }
-  },
-  {
-    "id": "nvidia/nemotron-nano-9b-v2:free",
-    "name": "NVIDIA: Nemotron Nano 9B V2 (free)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0",
-      "completion": "0"
     }
   },
   {
@@ -2077,6 +2088,17 @@
     }
   },
   {
+    "id": "mistralai/mistral-7b-instruct-v0.3",
+    "name": "Mistral: Mistral 7B Instruct v0.3",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000002",
+      "completion": "0.0000002"
+    }
+  },
+  {
     "id": "meta-llama/llama-3.1-405b-instruct",
     "name": "Meta: Llama 3.1 405B Instruct",
     "capabilities": [
@@ -2085,6 +2107,29 @@
     "pricing": {
       "prompt": "0.0000035",
       "completion": "0.0000035"
+    }
+  },
+  {
+    "id": "nvidia/nemotron-nano-9b-v2:free",
+    "name": "NVIDIA: Nemotron Nano 9B V2 (free)",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    }
+  },
+  {
+    "id": "amazon/nova-lite-v1",
+    "name": "Amazon: Nova Lite 1.0",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0.00000006",
+      "completion": "0.00000024"
     }
   },
   {
@@ -2099,28 +2144,6 @@
     }
   },
   {
-    "id": "meta-llama/llama-guard-3-8b",
-    "name": "Llama Guard 3 8B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000002",
-      "completion": "0.00000006"
-    }
-  },
-  {
-    "id": "allenai/olmo-3-32b-think",
-    "name": "AllenAI: Olmo 3 32B Think",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000003",
-      "completion": "0.00000055"
-    }
-  },
-  {
     "id": "neversleep/llama-3.1-lumimaid-8b",
     "name": "NeverSleep: Lumimaid v0.2 8B",
     "capabilities": [
@@ -2132,6 +2155,17 @@
     }
   },
   {
+    "id": "meta-llama/llama-guard-3-8b",
+    "name": "Llama Guard 3 8B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000002",
+      "completion": "0.00000006"
+    }
+  },
+  {
     "id": "nousresearch/hermes-4-70b",
     "name": "Nous: Hermes 4 70B",
     "capabilities": [
@@ -2140,6 +2174,41 @@
     "pricing": {
       "prompt": "0.00000011",
       "completion": "0.00000038"
+    }
+  },
+  {
+    "id": "opengvlab/internvl3-78b",
+    "name": "OpenGVLab: InternVL3 78B",
+    "capabilities": [
+      "image",
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000007",
+      "completion": "0.00000026"
+    }
+  },
+  {
+    "id": "undi95/remm-slerp-l2-13b",
+    "name": "ReMM SLERP 13B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000045",
+      "completion": "0.00000065"
+    }
+  },
+  {
+    "id": "qwen/qwen3-vl-30b-a3b-thinking",
+    "name": "Qwen: Qwen3 VL 30B A3B Thinking",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0.00000016",
+      "completion": "0.0000008"
     }
   },
   {
@@ -2156,29 +2225,6 @@
     }
   },
   {
-    "id": "amazon/nova-lite-v1",
-    "name": "Amazon: Nova Lite 1.0",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.00000006",
-      "completion": "0.00000024"
-    }
-  },
-  {
-    "id": "undi95/remm-slerp-l2-13b",
-    "name": "ReMM SLERP 13B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000045",
-      "completion": "0.00000065"
-    }
-  },
-  {
     "id": "openai/gpt-5-image",
     "name": "OpenAI: GPT-5 Image",
     "capabilities": [
@@ -2192,15 +2238,25 @@
     }
   },
   {
-    "id": "qwen/qwen3-vl-30b-a3b-thinking",
-    "name": "Qwen: Qwen3 VL 30B A3B Thinking",
+    "id": "microsoft/phi-4-reasoning-plus",
+    "name": "Microsoft: Phi 4 Reasoning Plus",
     "capabilities": [
-      "text",
-      "image"
+      "text"
     ],
     "pricing": {
-      "prompt": "0.00000016",
-      "completion": "0.0000008"
+      "prompt": "0.00000007",
+      "completion": "0.00000035"
+    }
+  },
+  {
+    "id": "nousresearch/hermes-2-pro-llama-3-8b",
+    "name": "NousResearch: Hermes 2 Pro - Llama-3 8B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000000025",
+      "completion": "0.00000008"
     }
   },
   {
@@ -2216,27 +2272,14 @@
     }
   },
   {
-    "id": "mistralai/mistral-small-3.1-24b-instruct:free",
-    "name": "Mistral: Mistral Small 3.1 24B (free)",
+    "id": "qwen/qwen3-coder-flash",
+    "name": "Qwen: Qwen3 Coder Flash",
     "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0",
-      "completion": "0"
-    }
-  },
-  {
-    "id": "opengvlab/internvl3-78b",
-    "name": "OpenGVLab: InternVL3 78B",
-    "capabilities": [
-      "image",
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000007",
-      "completion": "0.00000026"
+      "prompt": "0.0000003",
+      "completion": "0.0000015"
     }
   },
   {
@@ -2262,25 +2305,14 @@
     }
   },
   {
-    "id": "qwen/qwen3-coder-flash",
-    "name": "Qwen: Qwen3 Coder Flash",
+    "id": "nvidia/llama-3.1-nemotron-70b-instruct",
+    "name": "NVIDIA: Llama 3.1 Nemotron 70B Instruct",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000003",
-      "completion": "0.0000015"
-    }
-  },
-  {
-    "id": "nousresearch/hermes-2-pro-llama-3-8b",
-    "name": "NousResearch: Hermes 2 Pro - Llama-3 8B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000000025",
-      "completion": "0.00000008"
+      "prompt": "0.0000012",
+      "completion": "0.0000012"
     }
   },
   {
@@ -2292,28 +2324,6 @@
     "pricing": {
       "prompt": "0.0000004",
       "completion": "0.0000012"
-    }
-  },
-  {
-    "id": "tngtech/tng-r1t-chimera:free",
-    "name": "TNG: R1T Chimera (free)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0",
-      "completion": "0"
-    }
-  },
-  {
-    "id": "microsoft/phi-4-reasoning-plus",
-    "name": "Microsoft: Phi 4 Reasoning Plus",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000007",
-      "completion": "0.00000035"
     }
   },
   {
@@ -2350,86 +2360,6 @@
     }
   },
   {
-    "id": "z-ai/glm-4.5v",
-    "name": "Z.AI: GLM 4.5V",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.00000048",
-      "completion": "0.00000144"
-    }
-  },
-  {
-    "id": "nvidia/llama-3.1-nemotron-70b-instruct",
-    "name": "NVIDIA: Llama 3.1 Nemotron 70B Instruct",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000012",
-      "completion": "0.0000012"
-    }
-  },
-  {
-    "id": "deepseek/deepseek-prover-v2",
-    "name": "DeepSeek: DeepSeek Prover V2",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000005",
-      "completion": "0.00000218"
-    }
-  },
-  {
-    "id": "meta-llama/llama-3.2-90b-vision-instruct",
-    "name": "Meta: Llama 3.2 90B Vision Instruct",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.00000035",
-      "completion": "0.0000004"
-    }
-  },
-  {
-    "id": "openai/gpt-4-turbo",
-    "name": "OpenAI: GPT-4 Turbo",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.00001",
-      "completion": "0.00003"
-    }
-  },
-  {
-    "id": "z-ai/glm-4-32b",
-    "name": "Z.AI: GLM 4 32B ",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000001",
-      "completion": "0.0000001"
-    }
-  },
-  {
-    "id": "mistralai/mistral-large",
-    "name": "Mistral Large",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000002",
-      "completion": "0.000006"
-    }
-  },
-  {
     "id": "nvidia/nemotron-nano-12b-v2-vl",
     "name": "NVIDIA: Nemotron Nano 12B 2 VL",
     "capabilities": [
@@ -2439,17 +2369,6 @@
     ],
     "pricing": {
       "prompt": "0.0000002",
-      "completion": "0.0000006"
-    }
-  },
-  {
-    "id": "cohere/command-r-08-2024",
-    "name": "Cohere: Command R (08-2024)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000015",
       "completion": "0.0000006"
     }
   },
@@ -2466,6 +2385,75 @@
     }
   },
   {
+    "id": "mistralai/mistral-large",
+    "name": "Mistral Large",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000002",
+      "completion": "0.000006"
+    }
+  },
+  {
+    "id": "z-ai/glm-4-32b",
+    "name": "Z.AI: GLM 4 32B ",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000001",
+      "completion": "0.0000001"
+    }
+  },
+  {
+    "id": "deepseek/deepseek-prover-v2",
+    "name": "DeepSeek: DeepSeek Prover V2",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000005",
+      "completion": "0.00000218"
+    }
+  },
+  {
+    "id": "z-ai/glm-4.5v",
+    "name": "Z.AI: GLM 4.5V",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0.00000048",
+      "completion": "0.00000144"
+    }
+  },
+  {
+    "id": "openai/gpt-4-turbo",
+    "name": "OpenAI: GPT-4 Turbo",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0.00001",
+      "completion": "0.00003"
+    }
+  },
+  {
+    "id": "meta-llama/llama-3.2-90b-vision-instruct",
+    "name": "Meta: Llama 3.2 90B Vision Instruct",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0.00000035",
+      "completion": "0.0000004"
+    }
+  },
+  {
     "id": "aion-labs/aion-rp-llama-3.1-8b",
     "name": "AionLabs: Aion-RP 1.0 (8B)",
     "capabilities": [
@@ -2477,21 +2465,22 @@
     }
   },
   {
-    "id": "qwen/qwen-max",
-    "name": "Qwen: Qwen-Max ",
+    "id": "cohere/command-r-08-2024",
+    "name": "Cohere: Command R (08-2024)",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000016",
-      "completion": "0.0000064"
+      "prompt": "0.00000015",
+      "completion": "0.0000006"
     }
   },
   {
-    "id": "deepseek/deepseek-r1-distill-llama-70b:free",
-    "name": "DeepSeek: R1 Distill Llama 70B (free)",
+    "id": "mistralai/mistral-small-3.1-24b-instruct:free",
+    "name": "Mistral: Mistral Small 3.1 24B (free)",
     "capabilities": [
-      "text"
+      "text",
+      "image"
     ],
     "pricing": {
       "prompt": "0",
@@ -2511,17 +2500,6 @@
     }
   },
   {
-    "id": "qwen/qwen-plus-2025-07-28",
-    "name": "Qwen: Qwen Plus 0728",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000004",
-      "completion": "0.0000012"
-    }
-  },
-  {
     "id": "tngtech/tng-r1t-chimera",
     "name": "TNG: R1T Chimera",
     "capabilities": [
@@ -2529,6 +2507,41 @@
     ],
     "pricing": {
       "prompt": "0.0000003",
+      "completion": "0.0000012"
+    }
+  },
+  {
+    "id": "openai/o3-deep-research",
+    "name": "OpenAI: o3 Deep Research",
+    "capabilities": [
+      "image",
+      "text",
+      "file"
+    ],
+    "pricing": {
+      "prompt": "0.00001",
+      "completion": "0.00004"
+    }
+  },
+  {
+    "id": "qwen/qwen-max",
+    "name": "Qwen: Qwen-Max ",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000016",
+      "completion": "0.0000064"
+    }
+  },
+  {
+    "id": "qwen/qwen-plus-2025-07-28",
+    "name": "Qwen: Qwen Plus 0728",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000004",
       "completion": "0.0000012"
     }
   },
@@ -2546,15 +2559,14 @@
     }
   },
   {
-    "id": "perplexity/sonar-reasoning-pro",
-    "name": "Perplexity: Sonar Reasoning Pro",
+    "id": "mistralai/mistral-small",
+    "name": "Mistral Small",
     "capabilities": [
-      "text",
-      "image"
+      "text"
     ],
     "pricing": {
-      "prompt": "0.000002",
-      "completion": "0.000008"
+      "prompt": "0.0000002",
+      "completion": "0.0000006"
     }
   },
   {
@@ -2570,95 +2582,15 @@
     }
   },
   {
-    "id": "prime-intellect/intellect-3",
-    "name": "Prime Intellect: INTELLECT-3",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000002",
-      "completion": "0.0000011"
-    }
-  },
-  {
-    "id": "mistralai/mistral-small",
-    "name": "Mistral Small",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000002",
-      "completion": "0.0000006"
-    }
-  },
-  {
-    "id": "moonshotai/kimi-dev-72b",
-    "name": "MoonshotAI: Kimi Dev 72B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000029",
-      "completion": "0.00000115"
-    }
-  },
-  {
-    "id": "openai/gpt-4o-mini-search-preview",
-    "name": "OpenAI: GPT-4o-mini Search Preview",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000015",
-      "completion": "0.0000006"
-    }
-  },
-  {
-    "id": "openai/codex-mini",
-    "name": "OpenAI: Codex Mini",
-    "capabilities": [
-      "image",
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000015",
-      "completion": "0.000006"
-    }
-  },
-  {
-    "id": "mistralai/mistral-medium-3",
-    "name": "Mistral: Mistral Medium 3",
+    "id": "perplexity/sonar-reasoning-pro",
+    "name": "Perplexity: Sonar Reasoning Pro",
     "capabilities": [
       "text",
       "image"
     ],
     "pricing": {
-      "prompt": "0.0000004",
-      "completion": "0.000002"
-    }
-  },
-  {
-    "id": "meta-llama/llama-3.2-11b-vision-instruct",
-    "name": "Meta: Llama 3.2 11B Vision Instruct",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.000000049",
-      "completion": "0.000000049"
-    }
-  },
-  {
-    "id": "qwen/qwen3-vl-8b-thinking",
-    "name": "Qwen: Qwen3 VL 8B Thinking",
-    "capabilities": [
-      "image",
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000018",
-      "completion": "0.0000021"
+      "prompt": "0.000002",
+      "completion": "0.000008"
     }
   },
   {
@@ -2674,6 +2606,75 @@
     }
   },
   {
+    "id": "mistralai/mistral-medium-3",
+    "name": "Mistral: Mistral Medium 3",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0.0000004",
+      "completion": "0.000002"
+    }
+  },
+  {
+    "id": "openai/gpt-4o-mini-search-preview",
+    "name": "OpenAI: GPT-4o-mini Search Preview",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000015",
+      "completion": "0.0000006"
+    }
+  },
+  {
+    "id": "sao10k/l3-euryale-70b",
+    "name": "Sao10k: Llama 3 Euryale 70B v2.1",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000148",
+      "completion": "0.00000148"
+    }
+  },
+  {
+    "id": "openai/codex-mini",
+    "name": "OpenAI: Codex Mini",
+    "capabilities": [
+      "image",
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000015",
+      "completion": "0.000006"
+    }
+  },
+  {
+    "id": "meta-llama/llama-3.2-11b-vision-instruct",
+    "name": "Meta: Llama 3.2 11B Vision Instruct",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0.000000049",
+      "completion": "0.000000049"
+    }
+  },
+  {
+    "id": "moonshotai/kimi-dev-72b",
+    "name": "MoonshotAI: Kimi Dev 72B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000029",
+      "completion": "0.00000115"
+    }
+  },
+  {
     "id": "amazon/nova-pro-v1",
     "name": "Amazon: Nova Pro 1.0",
     "capabilities": [
@@ -2686,6 +2687,18 @@
     }
   },
   {
+    "id": "qwen/qwen3-vl-8b-thinking",
+    "name": "Qwen: Qwen3 VL 8B Thinking",
+    "capabilities": [
+      "image",
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000018",
+      "completion": "0.0000021"
+    }
+  },
+  {
     "id": "perplexity/sonar-reasoning",
     "name": "Perplexity: Sonar Reasoning",
     "capabilities": [
@@ -2694,30 +2707,6 @@
     "pricing": {
       "prompt": "0.000001",
       "completion": "0.000005"
-    }
-  },
-  {
-    "id": "openai/o3-deep-research",
-    "name": "OpenAI: o3 Deep Research",
-    "capabilities": [
-      "image",
-      "text",
-      "file"
-    ],
-    "pricing": {
-      "prompt": "0.00001",
-      "completion": "0.00004"
-    }
-  },
-  {
-    "id": "inception/mercury-coder",
-    "name": "Inception: Mercury Coder",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000025",
-      "completion": "0.000001"
     }
   },
   {
@@ -2733,48 +2722,14 @@
     }
   },
   {
-    "id": "qwen/qwen-vl-max",
-    "name": "Qwen: Qwen VL Max",
-    "capabilities": [
-      "text",
-      "image"
-    ],
-    "pricing": {
-      "prompt": "0.0000008",
-      "completion": "0.0000032"
-    }
-  },
-  {
-    "id": "deepcogito/cogito-v2-preview-llama-405b",
-    "name": "Deep Cogito: Cogito V2 Preview Llama 405B",
+    "id": "openai/gpt-4",
+    "name": "OpenAI: GPT-4",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000035",
-      "completion": "0.0000035"
-    }
-  },
-  {
-    "id": "moonshotai/kimi-k2:free",
-    "name": "MoonshotAI: Kimi K2 0711 (free)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0",
-      "completion": "0"
-    }
-  },
-  {
-    "id": "qwen/qwen3-4b:free",
-    "name": "Qwen: Qwen3 4B (free)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0",
-      "completion": "0"
+      "prompt": "0.00003",
+      "completion": "0.00006"
     }
   },
   {
@@ -2789,15 +2744,48 @@
     }
   },
   {
-    "id": "amazon/nova-premier-v1",
-    "name": "Amazon: Nova Premier 1.0",
+    "id": "tencent/hunyuan-a13b-instruct",
+    "name": "Tencent: Hunyuan A13B Instruct",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000014",
+      "completion": "0.00000057"
+    }
+  },
+  {
+    "id": "inception/mercury-coder",
+    "name": "Inception: Mercury Coder",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000025",
+      "completion": "0.000001"
+    }
+  },
+  {
+    "id": "qwen/qwen3-4b:free",
+    "name": "Qwen: Qwen3 4B (free)",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    }
+  },
+  {
+    "id": "qwen/qwen-vl-max",
+    "name": "Qwen: Qwen VL Max",
     "capabilities": [
       "text",
       "image"
     ],
     "pricing": {
-      "prompt": "0.0000025",
-      "completion": "0.0000125"
+      "prompt": "0.0000008",
+      "completion": "0.0000032"
     }
   },
   {
@@ -2814,41 +2802,31 @@
     }
   },
   {
-    "id": "sao10k/l3-euryale-70b",
-    "name": "Sao10k: Llama 3 Euryale 70B v2.1",
+    "id": "amazon/nova-premier-v1",
+    "name": "Amazon: Nova Premier 1.0",
     "capabilities": [
-      "text"
+      "text",
+      "image"
     ],
     "pricing": {
-      "prompt": "0.00000148",
-      "completion": "0.00000148"
-    }
-  },
-  {
-    "id": "openai/gpt-4",
-    "name": "OpenAI: GPT-4",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00003",
-      "completion": "0.00006"
-    }
-  },
-  {
-    "id": "tencent/hunyuan-a13b-instruct",
-    "name": "Tencent: Hunyuan A13B Instruct",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000014",
-      "completion": "0.00000057"
+      "prompt": "0.0000025",
+      "completion": "0.0000125"
     }
   },
   {
     "id": "meta-llama/llama-3.2-3b-instruct:free",
     "name": "Meta: Llama 3.2 3B Instruct (free)",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    }
+  },
+  {
+    "id": "moonshotai/kimi-k2:free",
+    "name": "MoonshotAI: Kimi K2 0711 (free)",
     "capabilities": [
       "text"
     ],
@@ -2869,36 +2847,14 @@
     }
   },
   {
-    "id": "mistralai/codestral-2501",
-    "name": "Mistral: Codestral 2501",
+    "id": "deepcogito/cogito-v2-preview-llama-405b",
+    "name": "Deep Cogito: Cogito V2 Preview Llama 405B",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000003",
-      "completion": "0.0000009"
-    }
-  },
-  {
-    "id": "openai/gpt-4o-search-preview",
-    "name": "OpenAI: GPT-4o Search Preview",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000025",
-      "completion": "0.00001"
-    }
-  },
-  {
-    "id": "openai/gpt-4-turbo-preview",
-    "name": "OpenAI: GPT-4 Turbo Preview",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00001",
-      "completion": "0.00003"
+      "prompt": "0.0000035",
+      "completion": "0.0000035"
     }
   },
   {
@@ -2914,14 +2870,14 @@
     }
   },
   {
-    "id": "relace/relace-apply-3",
-    "name": "Relace: Relace Apply 3",
+    "id": "openai/gpt-4-turbo-preview",
+    "name": "OpenAI: GPT-4 Turbo Preview",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000085",
-      "completion": "0.00000125"
+      "prompt": "0.00001",
+      "completion": "0.00003"
     }
   },
   {
@@ -2944,6 +2900,61 @@
     "pricing": {
       "prompt": "0.0000001",
       "completion": "0.0000001"
+    }
+  },
+  {
+    "id": "mistralai/codestral-2501",
+    "name": "Mistral: Codestral 2501",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000003",
+      "completion": "0.0000009"
+    }
+  },
+  {
+    "id": "relace/relace-apply-3",
+    "name": "Relace: Relace Apply 3",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000085",
+      "completion": "0.00000125"
+    }
+  },
+  {
+    "id": "minimax/minimax-m1",
+    "name": "MiniMax: MiniMax M1",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000004",
+      "completion": "0.0000022"
+    }
+  },
+  {
+    "id": "google/gemma-2-27b-it",
+    "name": "Google: Gemma 2 27B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000065",
+      "completion": "0.00000065"
+    }
+  },
+  {
+    "id": "openai/gpt-4o-search-preview",
+    "name": "OpenAI: GPT-4o Search Preview",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000025",
+      "completion": "0.00001"
     }
   },
   {
@@ -2971,6 +2982,18 @@
     }
   },
   {
+    "id": "google/gemma-3-4b-it:free",
+    "name": "Google: Gemma 3 4B (free)",
+    "capabilities": [
+      "text",
+      "image"
+    ],
+    "pricing": {
+      "prompt": "0",
+      "completion": "0"
+    }
+  },
+  {
     "id": "neversleep/noromaid-20b",
     "name": "Noromaid 20B",
     "capabilities": [
@@ -2979,61 +3002,6 @@
     "pricing": {
       "prompt": "0.000001",
       "completion": "0.00000175"
-    }
-  },
-  {
-    "id": "baidu/ernie-4.5-300b-a47b",
-    "name": "Baidu: ERNIE 4.5 300B A47B ",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000000224",
-      "completion": "0.00000088"
-    }
-  },
-  {
-    "id": "google/gemma-2-27b-it",
-    "name": "Google: Gemma 2 27B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000065",
-      "completion": "0.00000065"
-    }
-  },
-  {
-    "id": "minimax/minimax-m1",
-    "name": "MiniMax: MiniMax M1",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000004",
-      "completion": "0.0000022"
-    }
-  },
-  {
-    "id": "qwen/qwen2.5-coder-7b-instruct",
-    "name": "Qwen: Qwen2.5 Coder 7B Instruct",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000003",
-      "completion": "0.00000009"
-    }
-  },
-  {
-    "id": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-    "name": "NVIDIA: Llama 3.1 Nemotron Ultra 253B v1",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000006",
-      "completion": "0.0000018"
     }
   },
   {
@@ -3048,6 +3016,17 @@
     }
   },
   {
+    "id": "baidu/ernie-4.5-300b-a47b",
+    "name": "Baidu: ERNIE 4.5 300B A47B ",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000000224",
+      "completion": "0.00000088"
+    }
+  },
+  {
     "id": "morph/morph-v3-fast",
     "name": "Morph: Morph V3 Fast",
     "capabilities": [
@@ -3056,6 +3035,17 @@
     "pricing": {
       "prompt": "0.0000008",
       "completion": "0.0000012"
+    }
+  },
+  {
+    "id": "mistralai/magistral-medium-2506:thinking",
+    "name": "Mistral: Magistral Medium 2506 (thinking)",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000002",
+      "completion": "0.000005"
     }
   },
   {
@@ -3082,15 +3072,14 @@
     }
   },
   {
-    "id": "google/gemma-3-4b-it:free",
-    "name": "Google: Gemma 3 4B (free)",
+    "id": "qwen/qwen2.5-coder-7b-instruct",
+    "name": "Qwen: Qwen2.5 Coder 7B Instruct",
     "capabilities": [
-      "text",
-      "image"
+      "text"
     ],
     "pricing": {
-      "prompt": "0",
-      "completion": "0"
+      "prompt": "0.00000003",
+      "completion": "0.00000009"
     }
   },
   {
@@ -3102,6 +3091,17 @@
     "pricing": {
       "prompt": "0.0000001",
       "completion": "0.0000001"
+    }
+  },
+  {
+    "id": "allenai/olmo-3-7b-instruct",
+    "name": "AllenAI: Olmo 3 7B Instruct",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000001",
+      "completion": "0.0000002"
     }
   },
   {
@@ -3127,17 +3127,6 @@
     }
   },
   {
-    "id": "openai/gpt-4-1106-preview",
-    "name": "OpenAI: GPT-4 Turbo (older v1106)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00001",
-      "completion": "0.00003"
-    }
-  },
-  {
     "id": "deepcogito/cogito-v2-preview-llama-109b-moe",
     "name": "Cogito V2 Preview Llama 109B",
     "capabilities": [
@@ -3150,26 +3139,25 @@
     }
   },
   {
-    "id": "deepseek/deepseek-r1-distill-qwen-14b",
-    "name": "DeepSeek: R1 Distill Qwen 14B",
+    "id": "openai/gpt-4-1106-preview",
+    "name": "OpenAI: GPT-4 Turbo (older v1106)",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000012",
-      "completion": "0.00000012"
+      "prompt": "0.00001",
+      "completion": "0.00003"
     }
   },
   {
-    "id": "mistralai/pixtral-large-2411",
-    "name": "Mistral: Pixtral Large 2411",
+    "id": "mistralai/magistral-medium-2506",
+    "name": "Mistral: Magistral Medium 2506",
     "capabilities": [
-      "text",
-      "image"
+      "text"
     ],
     "pricing": {
       "prompt": "0.000002",
-      "completion": "0.000006"
+      "completion": "0.000005"
     }
   },
   {
@@ -3198,28 +3186,6 @@
     }
   },
   {
-    "id": "openai/gpt-3.5-turbo-instruct",
-    "name": "OpenAI: GPT-3.5 Turbo Instruct",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000015",
-      "completion": "0.000002"
-    }
-  },
-  {
-    "id": "mistralai/magistral-medium-2506",
-    "name": "Mistral: Magistral Medium 2506",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000002",
-      "completion": "0.000005"
-    }
-  },
-  {
     "id": "arliai/qwq-32b-arliai-rpr-v1",
     "name": "ArliAI: QwQ 32B RpR v1",
     "capabilities": [
@@ -3231,14 +3197,14 @@
     }
   },
   {
-    "id": "allenai/olmo-3-7b-instruct",
-    "name": "AllenAI: Olmo 3 7B Instruct",
+    "id": "openai/gpt-3.5-turbo-instruct",
+    "name": "OpenAI: GPT-3.5 Turbo Instruct",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000001",
-      "completion": "0.0000002"
+      "prompt": "0.0000015",
+      "completion": "0.000002"
     }
   },
   {
@@ -3253,15 +3219,26 @@
     }
   },
   {
-    "id": "qwen/qwen-vl-plus",
-    "name": "Qwen: Qwen VL Plus",
+    "id": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+    "name": "NVIDIA: Llama 3.1 Nemotron Ultra 253B v1",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000006",
+      "completion": "0.0000018"
+    }
+  },
+  {
+    "id": "mistralai/pixtral-large-2411",
+    "name": "Mistral: Pixtral Large 2411",
     "capabilities": [
       "text",
       "image"
     ],
     "pricing": {
-      "prompt": "0.00000021",
-      "completion": "0.00000063"
+      "prompt": "0.000002",
+      "completion": "0.000006"
     }
   },
   {
@@ -3287,25 +3264,14 @@
     }
   },
   {
-    "id": "openai/gpt-3.5-turbo-16k",
-    "name": "OpenAI: GPT-3.5 Turbo 16k",
+    "id": "deepseek/deepseek-r1-distill-qwen-14b",
+    "name": "DeepSeek: R1 Distill Qwen 14B",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.000003",
-      "completion": "0.000004"
-    }
-  },
-  {
-    "id": "mistralai/magistral-medium-2506:thinking",
-    "name": "Mistral: Magistral Medium 2506 (thinking)",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000002",
-      "completion": "0.000005"
+      "prompt": "0.00000012",
+      "completion": "0.00000012"
     }
   },
   {
@@ -3320,6 +3286,41 @@
     }
   },
   {
+    "id": "openai/gpt-3.5-turbo-16k",
+    "name": "OpenAI: GPT-3.5 Turbo 16k",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.000003",
+      "completion": "0.000004"
+    }
+  },
+  {
+    "id": "cohere/command-a",
+    "name": "Cohere: Command A",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000025",
+      "completion": "0.00001"
+    }
+  },
+  {
+    "id": "openai/gpt-4o:extended",
+    "name": "OpenAI: GPT-4o (extended)",
+    "capabilities": [
+      "text",
+      "image",
+      "file"
+    ],
+    "pricing": {
+      "prompt": "0.000006",
+      "completion": "0.000018"
+    }
+  },
+  {
     "id": "google/gemma-3n-e4b-it:free",
     "name": "Google: Gemma 3n 4B (free)",
     "capabilities": [
@@ -3328,6 +3329,17 @@
     "pricing": {
       "prompt": "0",
       "completion": "0"
+    }
+  },
+  {
+    "id": "mistralai/mistral-saba",
+    "name": "Mistral: Saba",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000002",
+      "completion": "0.0000006"
     }
   },
   {
@@ -3354,14 +3366,15 @@
     }
   },
   {
-    "id": "cohere/command-a",
-    "name": "Cohere: Command A",
+    "id": "thudm/glm-4.1v-9b-thinking",
+    "name": "THUDM: GLM 4.1V 9B Thinking",
     "capabilities": [
+      "image",
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000025",
-      "completion": "0.00001"
+      "prompt": "0.000000028",
+      "completion": "0.0000001104"
     }
   },
   {
@@ -3374,18 +3387,6 @@
     "pricing": {
       "prompt": "0.000000336",
       "completion": "0.000001"
-    }
-  },
-  {
-    "id": "thudm/glm-4.1v-9b-thinking",
-    "name": "THUDM: GLM 4.1V 9B Thinking",
-    "capabilities": [
-      "image",
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000000028",
-      "completion": "0.0000001104"
     }
   },
   {
@@ -3402,19 +3403,6 @@
     }
   },
   {
-    "id": "openai/gpt-4o:extended",
-    "name": "OpenAI: GPT-4o (extended)",
-    "capabilities": [
-      "text",
-      "image",
-      "file"
-    ],
-    "pricing": {
-      "prompt": "0.000006",
-      "completion": "0.000018"
-    }
-  },
-  {
     "id": "switchpoint/router",
     "name": "Switchpoint Router",
     "capabilities": [
@@ -3426,14 +3414,15 @@
     }
   },
   {
-    "id": "cohere/command-r-plus-08-2024",
-    "name": "Cohere: Command R+ (08-2024)",
+    "id": "qwen/qwen-vl-plus",
+    "name": "Qwen: Qwen VL Plus",
     "capabilities": [
-      "text"
+      "text",
+      "image"
     ],
     "pricing": {
-      "prompt": "0.0000025",
-      "completion": "0.00001"
+      "prompt": "0.00000021",
+      "completion": "0.00000063"
     }
   },
   {
@@ -3448,6 +3437,17 @@
     }
   },
   {
+    "id": "mistralai/mistral-7b-instruct-v0.1",
+    "name": "Mistral: Mistral 7B Instruct v0.1",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000011",
+      "completion": "0.00000019"
+    }
+  },
+  {
     "id": "mancer/weaver",
     "name": "Mancer: Weaver (alpha)",
     "capabilities": [
@@ -3459,21 +3459,9 @@
     }
   },
   {
-    "id": "mistralai/mistral-saba",
-    "name": "Mistral: Saba",
+    "id": "cohere/command-r-plus-08-2024",
+    "name": "Cohere: Command R+ (08-2024)",
     "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000002",
-      "completion": "0.0000006"
-    }
-  },
-  {
-    "id": "openai/gpt-4o-audio-preview",
-    "name": "OpenAI: GPT-4o Audio",
-    "capabilities": [
-      "audio",
       "text"
     ],
     "pricing": {
@@ -3493,26 +3481,15 @@
     }
   },
   {
-    "id": "stepfun-ai/step3",
-    "name": "StepFun: Step3",
+    "id": "openai/gpt-4o-audio-preview",
+    "name": "OpenAI: GPT-4o Audio",
     "capabilities": [
-      "image",
+      "audio",
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000057",
-      "completion": "0.00000142"
-    }
-  },
-  {
-    "id": "mistralai/mistral-7b-instruct-v0.1",
-    "name": "Mistral: Mistral 7B Instruct v0.1",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.00000011",
-      "completion": "0.00000019"
+      "prompt": "0.0000025",
+      "completion": "0.00001"
     }
   },
   {
@@ -3527,14 +3504,26 @@
     }
   },
   {
-    "id": "deepcogito/cogito-v2-preview-llama-70b",
-    "name": "Deep Cogito: Cogito V2 Preview Llama 70B",
+    "id": "stepfun-ai/step3",
+    "name": "StepFun: Step3",
+    "capabilities": [
+      "image",
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.00000057",
+      "completion": "0.00000142"
+    }
+  },
+  {
+    "id": "nousresearch/deephermes-3-mistral-24b-preview",
+    "name": "Nous: DeepHermes 3 Mistral 24B Preview",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000088",
-      "completion": "0.00000088"
+      "prompt": "0.00000005",
+      "completion": "0.0000002"
     }
   },
   {
@@ -3560,25 +3549,14 @@
     }
   },
   {
-    "id": "nousresearch/deephermes-3-mistral-24b-preview",
-    "name": "Nous: DeepHermes 3 Mistral 24B Preview",
+    "id": "deepcogito/cogito-v2-preview-llama-70b",
+    "name": "Deep Cogito: Cogito V2 Preview Llama 70B",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.00000005",
-      "completion": "0.0000002"
-    }
-  },
-  {
-    "id": "sao10k/l3.1-70b-hanami-x1",
-    "name": "Sao10K: Llama 3.1 70B Hanami x1",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.000003",
-      "completion": "0.000003"
+      "prompt": "0.00000088",
+      "completion": "0.00000088"
     }
   },
   {
@@ -3593,14 +3571,14 @@
     }
   },
   {
-    "id": "aion-labs/aion-1.0-mini",
-    "name": "AionLabs: Aion-1.0-Mini",
+    "id": "sao10k/l3.1-70b-hanami-x1",
+    "name": "Sao10K: Llama 3.1 70B Hanami x1",
     "capabilities": [
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000007",
-      "completion": "0.0000014"
+      "prompt": "0.000003",
+      "completion": "0.000003"
     }
   },
   {
@@ -3610,8 +3588,19 @@
       "text"
     ],
     "pricing": {
-      "prompt": "0.0000002",
-      "completion": "0.00000035"
+      "prompt": "0.00000005",
+      "completion": "0.0000002"
+    }
+  },
+  {
+    "id": "aion-labs/aion-1.0-mini",
+    "name": "AionLabs: Aion-1.0-Mini",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000007",
+      "completion": "0.0000014"
     }
   },
   {
@@ -3645,6 +3634,17 @@
     "pricing": {
       "prompt": "0.0000025",
       "completion": "0.00001"
+    }
+  },
+  {
+    "id": "meta-llama/llama-guard-2-8b",
+    "name": "Meta: LlamaGuard 2 8B",
+    "capabilities": [
+      "text"
+    ],
+    "pricing": {
+      "prompt": "0.0000002",
+      "completion": "0.0000002"
     }
   },
   {
@@ -3682,17 +3682,6 @@
     "pricing": {
       "prompt": "0.0000008",
       "completion": "0.000004"
-    }
-  },
-  {
-    "id": "meta-llama/llama-guard-2-8b",
-    "name": "Meta: LlamaGuard 2 8B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": "0.0000002",
-      "completion": "0.0000002"
     }
   },
   {
@@ -3815,18 +3804,7 @@
   },
   {
     "id": null,
-    "name": "Arcee AI: AFM 4.5B",
-    "capabilities": [
-      "text"
-    ],
-    "pricing": {
-      "prompt": null,
-      "completion": null
-    }
-  },
-  {
-    "id": null,
-    "name": "Sherlock Think Alpha",
+    "name": "Sherlock Dash Alpha",
     "capabilities": [
       "text",
       "image"
@@ -3838,7 +3816,7 @@
   },
   {
     "id": null,
-    "name": "Sherlock Dash Alpha",
+    "name": "Sherlock Think Alpha",
     "capabilities": [
       "text",
       "image"
@@ -3877,6 +3855,17 @@
     "name": "Andromeda Alpha",
     "capabilities": [
       "image",
+      "text"
+    ],
+    "pricing": {
+      "prompt": null,
+      "completion": null
+    }
+  },
+  {
+    "id": null,
+    "name": "Arcee AI: AFM 4.5B",
+    "capabilities": [
       "text"
     ],
     "pricing": {

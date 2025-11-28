@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Cando BETA installer - installs from beta branch
-# Usage: curl -fsSL https://raw.githubusercontent.com/cutoken/cando/beta/install-beta.sh | bash
+# Cando BETA installer - installs from GitHub prereleases
+# Usage: curl -fsSL https://raw.githubusercontent.com/cutoken/cando/main/dev/install-beta.sh | bash
+# Or specify a version: BETA_VERSION=v1.0.0-beta.1 curl -fsSL ... | bash
 
 set -e
 
 # Configuration for BETA channel
 REPO_OWNER="${CANDO_REPO_OWNER:-cutoken}"
 REPO_NAME="${CANDO_REPO_NAME:-cando}"
-BRANCH="${CANDO_BRANCH:-beta}"  # Beta branch by default
 INSTALL_DIR="${CANDO_INSTALL_DIR:-$HOME/.local/bin}"
 BINARY_NAME="cando-beta"  # Different binary name to avoid conflicts
+BETA_VERSION="${CANDO_BETA_VERSION:-}"  # Specific beta version to install
 BASE_URL="${CANDO_BASE_URL:-}"  # Allow custom hosting
 
 # Colors for output
@@ -61,17 +62,49 @@ detect_platform() {
     echo "${os}-${arch}"
 }
 
+# Get latest beta version from GitHub prereleases
+get_latest_beta_version() {
+    local version
+    
+    info "Fetching latest beta version..."
+    
+    # Fetch all releases and find the latest prerelease
+    version=$(curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases" 2>/dev/null | \
+              python3 -c "
+import sys, json
+releases = json.load(sys.stdin)
+for release in releases:
+    if release.get('prerelease', False):
+        print(release['tag_name'])
+        break
+" 2>/dev/null)
+    
+    if [ -z "$version" ]; then
+        # Fallback to simpler parsing if python3 isn't available
+        version=$(curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases" 2>/dev/null | \
+                  grep -B 5 '"prerelease": true' | \
+                  grep '"tag_name"' | \
+                  head -1 | \
+                  sed -E 's/.*"([^"]+)".*/\1/')
+    fi
+    
+    if [ -z "$version" ]; then
+        error "No beta releases found. Please check https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+    fi
+    
+    echo "$version"
+}
+
 # Download and install binary
 install_binary() {
-    local platform download_url tmp_file
-
+    local platform download_url tmp_file version
+    
     platform=$(detect_platform)
     
     beta_notice
     
     info "Installing Cando BETA for ${platform}..."
-    info "Branch: ${BRANCH}"
-
+    
     # Determine download URL
     if [ -n "$BASE_URL" ]; then
         # Custom hosting (e.g., your own server)
@@ -82,73 +115,56 @@ install_binary() {
             download_url="${BASE_URL}/cando-${platform}"
         fi
         info "Using custom URL: ${download_url}"
+        version="custom"
     else
-        # GitHub raw content from beta branch
-        local raw_base="https://github.com/${REPO_OWNER}/${REPO_NAME}/raw/${BRANCH}/dist"
+        # Get beta version
+        if [ -z "$BETA_VERSION" ]; then
+            version=$(get_latest_beta_version)
+        else
+            version="$BETA_VERSION"
+        fi
+        
+        info "Installing beta version: ${version}"
+        
+        # GitHub releases URL for prereleases
         if [[ "$platform" == *"windows"* ]]; then
-            download_url="${raw_base}/cando-${platform}.exe"
+            download_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${version}/cando-${platform}.exe"
             BINARY_NAME="${BINARY_NAME}.exe"
         else
-            download_url="${raw_base}/cando-${platform}"
+            download_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${version}/cando-${platform}-bin"
         fi
-        info "Downloading from beta branch: ${download_url}"
+        info "Downloading from GitHub releases: ${download_url}"
     fi
-
+    
     # Create install directory
     mkdir -p "$INSTALL_DIR"
-
+    
     # Download binary
     tmp_file=$(mktemp)
     info "Downloading beta binary..."
     if ! curl -fsSL "$download_url" -o "$tmp_file" 2>/dev/null; then
-        warn "Direct download failed, trying to build from source..."
-        build_from_source "$platform"
-        return
-    fi
+        error "Failed to download from ${download_url}
+        
+Possible reasons:
+1. Beta version ${version} doesn't exist
+2. Network issues
+3. GitHub API rate limit
 
+Try:
+- Check available releases at https://github.com/${REPO_OWNER}/${REPO_NAME}/releases
+- Specify a version: CANDO_BETA_VERSION=v1.0.0-beta.1 $0"
+    fi
+    
     # Install binary
     mv "$tmp_file" "${INSTALL_DIR}/${BINARY_NAME}"
     chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
-
+    
     info "Cando BETA installed to: ${INSTALL_DIR}/${BINARY_NAME}"
     
-    # Create symlink for convenience
-    if [ -L "${INSTALL_DIR}/cando" ] || [ ! -f "${INSTALL_DIR}/cando" ]; then
-        ln -sf "${BINARY_NAME}" "${INSTALL_DIR}/cando"
-        info "Created symlink: cando -> ${BINARY_NAME}"
-    else
+    # Check for regular cando
+    if [ -f "${INSTALL_DIR}/cando" ] && [ ! -L "${INSTALL_DIR}/cando" ]; then
         warn "Regular cando binary exists, beta installed as ${BINARY_NAME}"
     fi
-}
-
-# Build from source if binary not available
-build_from_source() {
-    local platform="$1"
-    
-    info "Building from beta branch source..."
-    
-    # Check for Go
-    if ! command -v go &> /dev/null; then
-        error "Go is required to build from source. Install from https://golang.org"
-    fi
-    
-    # Clone and build
-    local tmp_dir=$(mktemp -d)
-    cd "$tmp_dir"
-    
-    info "Cloning beta branch..."
-    git clone --depth 1 --branch "$BRANCH" "https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
-    cd "$REPO_NAME"
-    
-    info "Building beta version..."
-    go build -ldflags="-X main.Version=${BRANCH}-$(git rev-parse --short HEAD)" \
-             -o "${INSTALL_DIR}/${BINARY_NAME}" ./cmd/cando
-    
-    chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
-    cd /
-    rm -rf "$tmp_dir"
-    
-    info "Built and installed from source"
 }
 
 # Check if directory is in PATH
@@ -158,7 +174,7 @@ check_path() {
         echo ""
         echo "Add this line to your shell configuration file:"
         echo ""
-
+        
         if [ -n "$BASH_VERSION" ]; then
             echo "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
             echo "    source ~/.bashrc"
@@ -177,17 +193,15 @@ check_path() {
 # Verify installation
 verify_installation() {
     if [ -x "${INSTALL_DIR}/${BINARY_NAME}" ]; then
+        local version=$("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null || echo "unknown")
         info "Installation successful!"
-        echo ""
-        
-        # Try to get version
-        if version=$("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null); then
-            info "Installed version: $version"
-        fi
-        
+        info "Installed version: ${version}"
         echo ""
         info "Run '${BINARY_NAME} --help' to get started"
         info "Report beta issues at: https://github.com/${REPO_OWNER}/${REPO_NAME}/issues"
+        echo ""
+        info "To uninstall beta, run: rm ${INSTALL_DIR}/${BINARY_NAME}"
+        info "To switch to stable, run the regular installer"
     else
         error "Installation verification failed"
     fi
@@ -198,14 +212,10 @@ main() {
     echo "Cando BETA Installer"
     echo "===================="
     echo ""
-
+    
     install_binary
     check_path
     verify_installation
-
-    echo ""
-    info "To uninstall beta, run: rm ${INSTALL_DIR}/${BINARY_NAME}"
-    info "To switch to stable, run the regular installer"
 }
 
-main
+main "$@"

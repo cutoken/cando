@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Beta release script - builds and prepares beta releases
+# Beta release helper - creates and pushes beta tags
+# GitHub Actions will automatically build and create prereleases
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DIST_DIR="${ROOT_DIR}/dist"
-DEV_DIR="${ROOT_DIR}/dev"
 
 # Colors
 RED='\033[0;31m'
@@ -18,14 +17,12 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 beta() { echo -e "${BLUE}[BETA]${NC} $1"; }
 
-# Check we're on beta branch
-CURRENT_BRANCH=$(git branch --show-current)
-if [[ "$CURRENT_BRANCH" != "beta" ]] && [[ "${FORCE_BRANCH:-}" != "1" ]]; then
-    warn "Not on beta branch (current: $CURRENT_BRANCH)"
-    echo "Switch to beta branch or set FORCE_BRANCH=1"
-    exit 1
+# Check we're in a git repo
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
+    error "Not in a git repository"
 fi
 
+# Get version argument
 VERSION="${1:-}"
 if [[ -z "$VERSION" ]]; then
     # Suggest next beta version
@@ -38,7 +35,12 @@ if [[ -z "$VERSION" ]]; then
         SUGGESTED="${BASE}-beta.${NEXT_NUM}"
     else
         # First beta for this version
-        SUGGESTED="${LAST_TAG}-beta.1"
+        MAJOR=$(echo "$LAST_TAG" | cut -d. -f1 | sed 's/v//')
+        MINOR=$(echo "$LAST_TAG" | cut -d. -f2)
+        PATCH=$(echo "$LAST_TAG" | cut -d. -f3 | cut -d- -f1)
+        # Increment minor for beta
+        NEXT_MINOR=$((MINOR + 1))
+        SUGGESTED="v${MAJOR}.${NEXT_MINOR}.0-beta.1"
     fi
     
     read -rp "Enter beta version (suggested: $SUGGESTED): " VERSION
@@ -49,13 +51,33 @@ if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
     error "Version must be like v1.0.0-beta.1"
 fi
 
-beta "Building Beta Release: $VERSION"
+beta "Creating Beta Release: $VERSION"
 echo "================================"
 
+# Check for uncommitted changes
+if ! git diff-index --quiet HEAD --; then
+    warn "You have uncommitted changes:"
+    git status --short
+    read -rp "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        error "Aborted"
+    fi
+fi
+
 # Run tests
-info "Running tests..."
-if ! go test ./... > /dev/null 2>&1; then
-    error "Tests failed"
+if [[ "${SKIP_TESTS:-}" != "1" ]]; then
+    info "Running tests..."
+    if ! go test ./... > /dev/null 2>&1; then
+        warn "Tests failed. Continue anyway? (y/N) "
+        read -rp "" -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            error "Aborted"
+        fi
+    fi
+else
+    warn "Skipping tests (SKIP_TESTS=1)"
 fi
 
 info "Running linter..."
@@ -63,79 +85,31 @@ if ! go vet ./... > /dev/null 2>&1; then
     warn "Linter warnings detected"
 fi
 
-# Build all platforms
-info "Building binaries..."
-rm -rf "$DIST_DIR"
-VERSION="$VERSION" make all
+# Create annotated tag
+info "Creating tag: $VERSION"
+TAG_MESSAGE="Beta Release $VERSION
 
-# Create beta-specific artifacts
-info "Creating beta artifacts..."
-cd "$DIST_DIR"
+This is a prerelease version for testing.
 
-# Add beta suffix to binaries for clarity
-for file in cando-*; do
-    if [[ -f "$file" ]]; then
-        beta_name="${file/cando-/cando-beta-}"
-        cp "$file" "$beta_name"
-        beta "Created: $beta_name"
-    fi
-done
+Changes since last release:
+$(git log $(git describe --tags --abbrev=0 2>/dev/null)..HEAD --oneline 2>/dev/null | head -10 || echo "Initial beta release")"
 
-# Generate checksums
-sha256sum cando-* > checksums-beta.txt
+git tag -a "$VERSION" -m "$TAG_MESSAGE"
 
-# Create beta-binaries.json for installer
-cat > beta-binaries.json <<EOF
-{
-  "version": "$VERSION",
-  "date": "$(date -Iseconds)",
-  "binaries": {
-    "linux-amd64": "cando-linux-amd64",
-    "linux-arm64": "cando-linux-arm64", 
-    "darwin-amd64": "cando-darwin-amd64",
-    "darwin-arm64": "cando-darwin-arm64",
-    "windows-amd64": "cando-windows-amd64.exe"
-  }
-}
-EOF
-
-cd "$ROOT_DIR"
-
-# Option to push to beta branch
-echo ""
-beta "Beta artifacts ready in $DIST_DIR"
+beta "Tag created successfully!"
 echo ""
 echo "Next steps:"
-echo "1. Test locally: CANDO_BASE_URL=file://$DIST_DIR ./dev/install-beta.sh"
-echo "2. Commit and push: git add -f dist/ && git commit -m 'Beta release $VERSION' && git push origin beta"
-echo "3. Tag (optional): git tag $VERSION && git push origin $VERSION"
-echo "4. Share installer: https://raw.githubusercontent.com/YOUR_REPO/cando/beta/dev/install-beta.sh"
+echo "1. Push the tag to trigger GitHub Actions:"
+echo "   ${GREEN}git push origin $VERSION${NC}"
 echo ""
-
-read -rp "Commit beta artifacts to git? [y/N] " commit_confirm
-if [[ "$commit_confirm" =~ ^[Yy]$ ]]; then
-    info "Committing beta artifacts..."
-    git add -f dist/
-    git commit -m "Beta release $VERSION
-
-- Built from: $(git rev-parse --short HEAD)
-- Branch: $CURRENT_BRANCH
-- Date: $(date)
-"
-    
-    read -rp "Push to origin/beta? [y/N] " push_confirm
-    if [[ "$push_confirm" =~ ^[Yy]$ ]]; then
-        git push origin "$CURRENT_BRANCH"
-        beta "Pushed to origin/$CURRENT_BRANCH"
-        
-        # Optionally tag
-        read -rp "Create and push tag $VERSION? [y/N] " tag_confirm
-        if [[ "$tag_confirm" =~ ^[Yy]$ ]]; then
-            git tag "$VERSION"
-            git push origin "$VERSION"
-            beta "Tagged as $VERSION"
-        fi
-    fi
-fi
-
-beta "Beta release $VERSION complete!"
+echo "2. GitHub Actions will automatically:"
+echo "   - Build binaries for all platforms"
+echo "   - Create a prerelease on GitHub"
+echo "   - Make it available for beta testers"
+echo ""
+echo "3. Testers can install with:"
+echo "   ${BLUE}curl -fsSL https://raw.githubusercontent.com/YOUR_REPO/cando/main/dev/install-beta.sh | bash${NC}"
+echo ""
+echo "4. To delete the tag if needed:"
+echo "   git tag -d $VERSION"
+echo "   git push origin --delete $VERSION"
