@@ -25,19 +25,27 @@ fi
 # Get version argument
 VERSION="${1:-}"
 if [[ -z "$VERSION" ]]; then
-    # Suggest next beta version
-    LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-    if [[ "$LAST_TAG" =~ beta ]]; then
+    # Get the highest version tag (not the most recent by date)
+    HIGHEST_TAG=$(git tag --sort=-version:refname | head -1 2>/dev/null || echo "v0.0.0")
+    
+    # If no tags exist at all
+    if [[ -z "$HIGHEST_TAG" ]]; then
+        HIGHEST_TAG="v0.0.0"
+    fi
+    
+    info "Highest version tag: $HIGHEST_TAG"
+    
+    if [[ "$HIGHEST_TAG" =~ beta ]]; then
         # Increment beta number
-        BASE=$(echo "$LAST_TAG" | sed 's/-beta.*//')
-        NUM=$(echo "$LAST_TAG" | sed 's/.*beta.//')
+        BASE=$(echo "$HIGHEST_TAG" | sed 's/-beta.*//')
+        NUM=$(echo "$HIGHEST_TAG" | sed 's/.*beta.//')
         NEXT_NUM=$((NUM + 1))
         SUGGESTED="${BASE}-beta.${NEXT_NUM}"
     else
-        # First beta for this version
-        MAJOR=$(echo "$LAST_TAG" | cut -d. -f1 | sed 's/v//')
-        MINOR=$(echo "$LAST_TAG" | cut -d. -f2)
-        PATCH=$(echo "$LAST_TAG" | cut -d. -f3 | cut -d- -f1)
+        # First beta for this version - increment minor version
+        MAJOR=$(echo "$HIGHEST_TAG" | cut -d. -f1 | sed 's/v//')
+        MINOR=$(echo "$HIGHEST_TAG" | cut -d. -f2)
+        PATCH=$(echo "$HIGHEST_TAG" | cut -d. -f3 | cut -d- -f1)
         # Increment minor for beta
         NEXT_MINOR=$((MINOR + 1))
         SUGGESTED="v${MAJOR}.${NEXT_MINOR}.0-beta.1"
@@ -87,12 +95,14 @@ fi
 
 # Create annotated tag
 info "Creating tag: $VERSION"
+# Get the highest version tag for changelog generation
+PREV_TAG=$(git tag --sort=-version:refname | head -1 2>/dev/null || "")
 TAG_MESSAGE="Beta Release $VERSION
 
 This is a prerelease version for testing.
 
 Changes since last release:
-$(git log $(git describe --tags --abbrev=0 2>/dev/null)..HEAD --oneline 2>/dev/null | head -10 || echo "Initial beta release")"
+$(if [[ -n "$PREV_TAG" ]]; then git log ${PREV_TAG}..HEAD --oneline 2>/dev/null | head -10; else echo "Initial beta release"; fi)"
 
 git tag -a "$VERSION" -m "$TAG_MESSAGE"
 
