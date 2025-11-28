@@ -69,31 +69,55 @@ if [[ -z "$VERSION" ]]; then
     
     info "Highest version tag: $HIGHEST_TAG"
     
-    # Remove beta suffix if present for version calculation
-    BASE_VERSION=$(echo "$HIGHEST_TAG" | sed 's/-beta.*//')
-    
-    # Parse version components
-    MAJOR=$(echo "$BASE_VERSION" | cut -d. -f1 | sed 's/v//')
-    MINOR=$(echo "$BASE_VERSION" | cut -d. -f2)
-    PATCH=$(echo "$BASE_VERSION" | cut -d. -f3 | cut -d- -f1)
-    
-    # Suggest next versions
-    NEXT_PATCH="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-    NEXT_MINOR="v${MAJOR}.$((MINOR + 1)).0"
-    NEXT_MAJOR="v$((MAJOR + 1)).0.0"
-    
-    echo ""
-    echo "Current highest version: $BASE_VERSION"
-    echo ""
-    echo "Suggested versions:"
-    echo "  1) $NEXT_PATCH - Patch release (bug fixes)"
-    echo "  2) $NEXT_MINOR - Minor release (new features)"
-    echo "  3) $NEXT_MAJOR - Major release (breaking changes)"
-    echo ""
-    
-    read -rp "Enter release version (e.g., v1.0.0): " VERSION
-    if [[ -z "$VERSION" ]]; then
-        error "Version is required"
+    # Check if highest tag is a beta - if so, we're releasing that version
+    if [[ "$HIGHEST_TAG" =~ -beta\. ]]; then
+        # Remove beta suffix - this IS the version we should release
+        VERSION=$(echo "$HIGHEST_TAG" | sed 's/-beta.*//')
+        if [[ "$DRY_RUN" == "true" ]]; then
+            info "Dry run will test release for: $VERSION (from $HIGHEST_TAG)"
+        else
+            echo ""
+            echo "You have beta $HIGHEST_TAG - releasing as $VERSION"
+            echo ""
+            read -rp "Release version $VERSION? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                # Ask for different version
+                read -rp "Enter release version (e.g., v1.0.0): " VERSION
+                if [[ -z "$VERSION" ]]; then
+                    error "Version is required"
+                fi
+            fi
+        fi
+    else
+        # Not a beta, suggest next versions
+        MAJOR=$(echo "$HIGHEST_TAG" | cut -d. -f1 | sed 's/v//')
+        MINOR=$(echo "$HIGHEST_TAG" | cut -d. -f2)
+        PATCH=$(echo "$HIGHEST_TAG" | cut -d. -f3 | cut -d- -f1)
+        
+        NEXT_PATCH="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+        NEXT_MINOR="v${MAJOR}.$((MINOR + 1)).0"
+        NEXT_MAJOR="v$((MAJOR + 1)).0.0"
+        
+        if [[ "$DRY_RUN" == "true" ]]; then
+            # In dry run, use next minor as default
+            VERSION="$NEXT_MINOR"
+            info "Dry run will test release for: $VERSION"
+        else
+            echo ""
+            echo "Current version: $HIGHEST_TAG"
+            echo ""
+            echo "Suggested versions:"
+            echo "  1) $NEXT_PATCH - Patch release (bug fixes)"
+            echo "  2) $NEXT_MINOR - Minor release (new features)"
+            echo "  3) $NEXT_MAJOR - Major release (breaking changes)"
+            echo ""
+            
+            read -rp "Enter release version (e.g., v1.0.0): " VERSION
+            if [[ -z "$VERSION" ]]; then
+                error "Version is required"
+            fi
+        fi
     fi
 fi
 
