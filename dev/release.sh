@@ -49,13 +49,15 @@ if ! git diff-index --quiet HEAD --; then
     error "You have uncommitted changes. Please commit or stash them first"
 fi
 
-# Check remote is up to date
-info "Fetching latest from origin..."
-git fetch origin main
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/main)
-if [ "$LOCAL" != "$REMOTE" ]; then
-    error "Your main branch is not up to date with origin/main. Please pull first"
+# Check remote is up to date (skip in dry run)
+if [[ "$DRY_RUN" == "false" ]]; then
+    info "Fetching latest from origin..."
+    git fetch origin main
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse origin/main)
+    if [ "$LOCAL" != "$REMOTE" ]; then
+        error "Your main branch is not up to date with origin/main. Please pull/push first"
+    fi
 fi
 
 # Get version if not provided as argument
