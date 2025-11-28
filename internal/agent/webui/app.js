@@ -384,31 +384,129 @@ function renderMessages() {
 
   renderMessageBanner(truncated, total, messages.length);
 
-  const lastPrimaryIndex = findLastPrimaryMessageIndex(messages);
   let previousRole = null;
+  let i = 0;
 
-  for (let i = 0; i < messages.length; i++) {
+  while (i < messages.length) {
     const msg = messages[i];
+
+    // Skip standalone tool messages (shouldn't happen but be safe)
     if (msg.role === 'tool') {
+      i++;
       continue;
     }
-    const attached = [];
-    let peek = i + 1;
-    while (peek < messages.length && messages[peek].role === 'tool') {
-      attached.push(messages[peek]);
-      peek++;
-    }
-    i = peek - 1;
 
-    const isLatest = offset + i === findLastPrimaryMessageIndex(appState.data.messages);
-    const showRole = msg.role !== previousRole;
-    const node = createMessageElement(msg, attached, isLatest, showRole);
-    if (node) {
-      ui.messages.appendChild(node);
+    // Handle user/system messages normally
+    if (msg.role !== 'assistant') {
+      const showRole = msg.role !== previousRole;
+      const node = createMessageElement(msg, [], false, showRole);
+      if (node) {
+        ui.messages.appendChild(node);
+      }
+      previousRole = msg.role;
+      i++;
+      continue;
     }
-    previousRole = msg.role;
+
+    // For assistant messages: group into segments by meaningful text
+    // Accumulate all consecutive assistant+tool messages into one block
+    const segments = [];  // Array of { content: string, toolCalls: [], toolResults: [] }
+    let currentSegment = { content: '', toolCalls: [], toolResults: [] };
+    let lastAssistantIndex = i;
+
+    while (i < messages.length && (messages[i].role === 'assistant' || messages[i].role === 'tool')) {
+      const m = messages[i];
+
+      if (m.role === 'assistant') {
+        lastAssistantIndex = i;
+        const hasContent = m.content && m.content.trim().length > 0;
+
+        if (hasContent) {
+          // If we have accumulated tools, save current segment and start new one
+          if (currentSegment.toolCalls.length > 0 || currentSegment.toolResults.length > 0) {
+            segments.push(currentSegment);
+            currentSegment = { content: '', toolCalls: [], toolResults: [] };
+          }
+          currentSegment.content += (currentSegment.content ? '\n\n' : '') + m.content;
+        }
+
+        // Accumulate tool calls
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          currentSegment.toolCalls.push(...m.tool_calls);
+        }
+      } else if (m.role === 'tool') {
+        currentSegment.toolResults.push(m);
+      }
+
+      i++;
+    }
+
+    // Push final segment if it has anything
+    if (currentSegment.content || currentSegment.toolCalls.length > 0 || currentSegment.toolResults.length > 0) {
+      segments.push(currentSegment);
+    }
+
+    // Render all segments as one assistant message block
+    if (segments.length > 0) {
+      const showRole = previousRole !== 'assistant';
+      const isLatest = offset + lastAssistantIndex === findLastPrimaryMessageIndex(appState.data.messages);
+      const node = createAssistantSegments(segments, isLatest, showRole);
+      if (node) {
+        ui.messages.appendChild(node);
+      }
+      previousRole = 'assistant';
+    }
   }
+
   scrollMessagesToBottom();
+}
+
+// Create assistant message with multiple content/tool segments
+function createAssistantSegments(segments, isLatest, showRole) {
+  const wrapper = document.createElement('article');
+  wrapper.className = 'message assistant';
+
+  if (showRole) {
+    const role = document.createElement('div');
+    role.className = 'message-role';
+    role.textContent = 'Cando';
+    wrapper.appendChild(role);
+  }
+
+  // Add copy button for full content
+  const allContent = segments.map(s => s.content).filter(c => c).join('\n\n');
+  if (allContent) {
+    const actions = document.createElement('div');
+    actions.className = 'message-actions';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'message-action-btn copy-btn';
+    copyBtn.title = 'Copy message';
+    copyBtn.innerHTML = '📋';
+    copyBtn.onclick = () => copyMessageContent(allContent, copyBtn);
+    actions.appendChild(copyBtn);
+    wrapper.appendChild(actions);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'message-body';
+
+  for (const segment of segments) {
+    // Add content if present
+    if (segment.content && segment.content.trim()) {
+      const contentWrapper = document.createElement('div');
+      contentWrapper.className = 'message-content';
+      contentWrapper.innerHTML = renderMarkdown(segment.content);
+      body.appendChild(contentWrapper);
+    }
+
+    // Add tool group if there are tools
+    if (segment.toolCalls.length > 0 || segment.toolResults.length > 0) {
+      body.appendChild(buildToolGroup(segment.toolCalls, segment.toolResults, isLatest));
+    }
+  }
+
+  wrapper.appendChild(body);
+  return wrapper;
 }
 
 function scrollMessagesToBottom() {
@@ -954,34 +1052,24 @@ function formatToolGroupLabel(toolCalls, toolMessages) {
     return 'Tool operations';
   }
 
-  const names = [];
-  (toolCalls || []).forEach((tc) => {
-    if (tc.function && tc.function.name) {
-      names.push(tc.function.name);
-    }
-  });
-  (toolMessages || []).forEach((msg) => {
-    if (msg.name && !names.includes(msg.name)) {
-      names.push(msg.name);
-    }
-  });
+  // Get first tool name
+  let firstName = null;
+  if (toolCalls && toolCalls.length > 0 && toolCalls[0].function?.name) {
+    firstName = toolCalls[0].function.name;
+  } else if (toolMessages && toolMessages.length > 0 && toolMessages[0].name) {
+    firstName = toolMessages[0].name;
+  }
 
-  if (names.length === 0) {
+  if (!firstName) {
     return `${total} tool operation${total !== 1 ? 's' : ''}`;
   }
 
-  if (names.length === 1) {
-    return `${names[0]}`;
+  if (total === 1) {
+    return firstName;
   }
 
-  const maxPreview = 2;
-  const preview = names.slice(0, maxPreview).join(', ');
-  if (names.length <= maxPreview) {
-    return `${names.length} tools: ${preview}`;
-  }
-
-  const remaining = names.length - maxPreview;
-  return `${names.length} tools: ${preview} +${remaining} more`;
+  const moreCount = total - 1;
+  return `${firstName} + ${moreCount} more`;
 }
 
 function updatePlanSummary(steps) {
@@ -1208,12 +1296,12 @@ function handleStreamEvent(event) {
   switch (event.type) {
     case 'tool_call_started':
       console.log('Tool call started:', event.data);
-      setStatus(`Running ${event.data.function}...`);
+      setStatus('Working');
       appendStreamingToolCall(event.data);
       break;
     case 'tool_call_completed':
       console.log('Tool call completed:', event.data);
-      setStatus(`Completed ${event.data.function}`);
+      setStatus('Working');
       updateStreamingToolResult(event.data);
       break;
     case 'request_retry': {
@@ -1257,11 +1345,35 @@ function handleStreamEvent(event) {
       updateStatusMeta();
       updateThinkingModelInfo();
 
-      // Create and append DOM element
-      const msgElement = createMessageElement(assistantMsg, [], true, true);
-      if (msgElement) {
-        ui.messages.appendChild(msgElement);
-        scrollMessagesToBottom();
+      // Skip empty/whitespace-only content
+      const hasMeaningfulContent = assistantMsg.content && assistantMsg.content.trim().length > 0;
+      if (!hasMeaningfulContent) {
+        break;
+      }
+
+      // Check if we should append to existing streaming message
+      const lastMsg = ui.messages.lastElementChild;
+      const isStreamingTurn = lastMsg && lastMsg.classList.contains('assistant') && lastMsg.classList.contains('streaming-tools');
+
+      if (isStreamingTurn) {
+        // Append content to existing streaming message (at the end, after any tool-groups)
+        const body = lastMsg.querySelector('.message-body');
+        if (body) {
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'message-content';
+          contentDiv.innerHTML = renderMarkdown(assistantMsg.content);
+          body.appendChild(contentDiv);
+          scrollMessagesToBottom();
+        }
+      } else {
+        // Create and append new DOM element
+        const msgElement = createMessageElement(assistantMsg, [], true, true);
+        if (msgElement) {
+          // Mark as streaming turn so subsequent events append to this message
+          msgElement.classList.add('streaming-tools');
+          ui.messages.appendChild(msgElement);
+          scrollMessagesToBottom();
+        }
       }
       break;
     case 'compaction_start':
@@ -1339,20 +1451,30 @@ function appendStreamingToolCall(data) {
 
     lastMessage.append(role, body);
     messages.appendChild(lastMessage);
+  } else {
+    // Mark existing message as streaming-tools so subsequent assistant_message events append
+    lastMessage.classList.add('streaming-tools');
   }
 
   const body = lastMessage.querySelector('.message-body');
   if (!body) return;
 
-  // Find or create tool-group details wrapper (matches static rendering)
-  let toolGroup = body.querySelector('.tool-group');
-  if (!toolGroup) {
+  // Find the LAST tool-group, or create one if needed
+  // If the last child is content (not tool-group), create new tool-group after it
+  let toolGroup = null;
+  const lastChild = body.lastElementChild;
+
+  if (lastChild && lastChild.classList.contains('tool-group')) {
+    // Last element is a tool-group, add to it
+    toolGroup = lastChild;
+  } else {
+    // Last element is content or body is empty, create new tool-group
     toolGroup = document.createElement('details');
     toolGroup.className = 'tool-group';
     toolGroup.open = false;
 
     const summary = document.createElement('summary');
-    summary.textContent = 'Tool operations';
+    summary.textContent = 'Working...';
     toolGroup.appendChild(summary);
 
     const toolStack = document.createElement('div');
@@ -1406,30 +1528,23 @@ function updateToolGroupSummary(toolGroup) {
   if (!toolStack) return;
 
   const toolCards = toolStack.querySelectorAll('.tool-card');
-  const toolNames = [];
-
-  toolCards.forEach(card => {
-    const name = card.dataset.toolName;
-    if (name && !toolNames.includes(name)) {
-      toolNames.push(name);
-    }
-  });
+  const totalCount = toolCards.length;
 
   const summary = toolGroup.querySelector('summary');
   if (!summary) return;
 
-  if (toolNames.length === 0) {
-    summary.textContent = 'Tool operations';
-  } else if (toolNames.length === 1) {
-    summary.textContent = toolNames[0];
+  if (totalCount === 0) {
+    summary.textContent = 'Working...';
   } else {
-    const maxPreview = 2;
-    const preview = toolNames.slice(0, maxPreview).join(', ');
-    if (toolNames.length <= maxPreview) {
-      summary.textContent = `${toolNames.length} tools: ${preview}`;
+    // Get first tool name
+    const firstCard = toolCards[0];
+    const firstName = firstCard?.dataset.toolName || 'tool';
+
+    if (totalCount === 1) {
+      summary.textContent = firstName;
     } else {
-      const remaining = toolNames.length - maxPreview;
-      summary.textContent = `${toolNames.length} tools: ${preview} +${remaining} more`;
+      const moreCount = totalCount - 1;
+      summary.textContent = `${firstName} + ${moreCount} more`;
     }
   }
 }
@@ -1882,6 +1997,14 @@ function setBusy(flag, message) {
   }
   if (!flag && ui.thinkingStatus) {
     ui.thinkingStatus.textContent = '';
+  }
+
+  // Clean up streaming-tools class when turn ends
+  if (!flag && ui.messages) {
+    const streamingMsg = ui.messages.querySelector('.streaming-tools');
+    if (streamingMsg) {
+      streamingMsg.classList.remove('streaming-tools');
+    }
   }
 
   if (message) setStatus(message);
