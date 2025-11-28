@@ -178,6 +178,13 @@ func EnsureAllProviderDefaults(configPath string) error {
 
 	// Track if any changes were made
 	var changes []string
+	
+	// Ensure thinking is enabled by default for existing configs
+	// This handles upgrades from older versions without the field
+	if !cfg.ThinkingEnabled && !cfg.ForceThinking {
+		cfg.ThinkingEnabled = true
+		changes = append(changes, "enabled thinking mode (default)")
+	}
 
 	// Initialize maps if nil
 	if cfg.ProviderModels == nil {
