@@ -16,11 +16,7 @@ import (
 )
 
 const (
-	maxImageSize             = 5 * 1024 * 1024 // 5MB - Z.AI's limit
-	zaiVisionEndpoint        = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-	zaiDefaultModel          = "glm-4.5v"
-	openrouterVisionEndpoint = "https://openrouter.ai/api/v1/chat/completions"
-	openrouterDefaultModel   = "qwen/qwen2.5-vl-32b-instruct"
+	maxImageSize = 5 * 1024 * 1024 // 5MB - Z.AI's limit
 )
 
 // VisionTool analyzes images using provider-specific vision APIs.
@@ -28,6 +24,13 @@ type VisionTool struct {
 	guard       pathGuard
 	credManager CredentialManager
 	client      *http.Client
+	config      VisionConfig
+}
+
+// VisionConfig holds endpoints from the main config
+type VisionConfig struct {
+	ZAIEndpoint        string
+	OpenRouterEndpoint string
 }
 
 // NewVisionTool constructs a vision analysis tool.
@@ -36,6 +39,19 @@ func NewVisionTool(guard pathGuard, credManager CredentialManager) *VisionTool {
 		guard:       guard,
 		credManager: credManager,
 		client:      &http.Client{Timeout: 60 * time.Second},
+	}
+}
+
+// NewVisionToolWithConfig constructs a vision tool with config endpoints.
+func NewVisionToolWithConfig(guard pathGuard, credManager CredentialManager, zaiEndpoint, openrouterEndpoint string) *VisionTool {
+	return &VisionTool{
+		guard:       guard,
+		credManager: credManager,
+		client:      &http.Client{Timeout: 60 * time.Second},
+		config: VisionConfig{
+			ZAIEndpoint:        zaiEndpoint,
+			OpenRouterEndpoint: openrouterEndpoint,
+		},
 	}
 }
 
@@ -99,14 +115,14 @@ func (v *VisionTool) Call(ctx context.Context, args map[string]any) (string, err
 		apiKey = creds.GetAPIKey("zai")
 		visionModel = creds.GetVisionModel("zai")
 		if visionModel == "" {
-			visionModel = zaiDefaultModel
+			return "", errors.New("vision model not configured for Z.AI")
 		}
 	} else if creds.IsConfigured("openrouter") {
 		provider = "openrouter"
 		apiKey = creds.GetAPIKey("openrouter")
 		visionModel = creds.GetVisionModel("openrouter")
 		if visionModel == "" {
-			visionModel = openrouterDefaultModel
+			return "", errors.New("vision model not configured for OpenRouter")
 		}
 	} else {
 		return "", errors.New("vision analysis requires Z.AI or OpenRouter provider - configure API key in settings")
@@ -235,7 +251,10 @@ func (v *VisionTool) callZAIVision(ctx context.Context, apiKey, model, imageData
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", zaiVisionEndpoint, bytes.NewBuffer(jsonData))
+	if v.config.ZAIEndpoint == "" {
+		return "", fmt.Errorf("ZAI vision endpoint not configured")
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", v.config.ZAIEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -331,7 +350,10 @@ func (v *VisionTool) callOpenRouterVision(ctx context.Context, apiKey, model, im
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", openrouterVisionEndpoint, bytes.NewBuffer(jsonData))
+	if v.config.OpenRouterEndpoint == "" {
+		return "", fmt.Errorf("OpenRouter vision endpoint not configured")
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", v.config.OpenRouterEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}

@@ -15,7 +15,7 @@ import (
 	"cando/internal/state"
 )
 
-const defaultEndpoint = "https://api.z.ai/api/coding/paas/v4/chat/completions"
+// No hardcoded endpoint - must come from config
 
 // ZAIResponse represents the full response structure from Z.AI API.
 type ZAIResponse struct {
@@ -65,7 +65,7 @@ type Client struct {
 func NewClient(endpoint, apiKey string, timeout time.Duration, logger *log.Logger) *Client {
 	trimmed := strings.TrimRight(endpoint, "/")
 	if trimmed == "" {
-		trimmed = defaultEndpoint
+		panic("ZAI endpoint must be provided from config - no hardcoded defaults")
 	}
 	if logger == nil {
 		logger = log.Default()
@@ -82,7 +82,7 @@ func NewClient(endpoint, apiKey string, timeout time.Duration, logger *log.Logge
 // parseZAIResponse extracts thinking content from Z.AI responses.
 func (c *Client) parseZAIResponse(zaiResp *ZAIResponse) (llm.ChatResponse, error) {
 	if len(zaiResp.Choices) == 0 {
-		return llm.ChatResponse{}, nil
+		return llm.ChatResponse{}, fmt.Errorf("no choices in response")
 	}
 
 	zaiChoice := zaiResp.Choices[0]
@@ -173,11 +173,6 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 	}
 
 	c.logger.Printf("[z.ai] sending %d messages to model %s", len(reqPayload.Messages), reqPayload.Model)
-	if reqPayload.Thinking != nil {
-		c.logger.Printf("[z.ai DEBUG] Request has thinking=%+v", reqPayload.Thinking)
-	} else {
-		c.logger.Printf("[z.ai DEBUG] Request has thinking=nil")
-	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -189,23 +184,42 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 	if err != nil {
 		return respPayload, fmt.Errorf("read response: %w", err)
 	}
+	
+	// Log response status
+	c.logger.Printf("[z.ai] Response status: %d, size: %d bytes", resp.StatusCode, len(respBody))
+	
+	// Check for Z.AI custom error format (returns 200 with error object)
+	// Only treat as error if it has the error structure (code + msg fields)
+	type errorResponse struct {
+		Code    int    `json:"code"`
+		Msg     string `json:"msg"`
+		Success bool   `json:"success"`
+	}
+	var errResp errorResponse
+	if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Code != 0 && errResp.Msg != "" {
+		c.logger.Printf("[z.ai] API returned error: code=%d msg=%s", errResp.Code, errResp.Msg)
+		return respPayload, fmt.Errorf("z.ai api error: %s", errResp.Msg)
+	}
+	
 	if resp.StatusCode >= 300 {
 		return respPayload, fmt.Errorf("api error: %s", strings.TrimSpace(string(respBody)))
 	}
 
 	// Try to parse as Z.AI enhanced response first
 	var zaiResp ZAIResponse
-	if err := json.Unmarshal(respBody, &zaiResp); err == nil && len(zaiResp.Choices) > 0 {
-		// Debug: Log what fields are present in the response
-		msg := zaiResp.Choices[0].Message
-		c.logger.Printf("[z.ai DEBUG] Response has: reasoning_content=%v thinking=%v content_blocks=%d reasoning=%d",
-			msg.ReasoningContent != "", msg.Thinking != "", len(msg.ContentBlocks), len(msg.Reasoning))
+	if err := json.Unmarshal(respBody, &zaiResp); err == nil {
+		if len(zaiResp.Choices) == 0 {
+			return llm.ChatResponse{}, fmt.Errorf("no choices returned")
+		}
 		return c.parseZAIResponse(&zaiResp)
 	}
 
 	// Fallback to standard parsing
 	if err := json.Unmarshal(respBody, &respPayload); err != nil {
 		return respPayload, fmt.Errorf("parse response: %w", err)
+	}
+	if len(respPayload.Choices) == 0 {
+		return respPayload, fmt.Errorf("no choices returned")
 	}
 	return respPayload, nil
 }

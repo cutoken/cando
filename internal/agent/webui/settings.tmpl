@@ -12,6 +12,7 @@
         <button class="tab-btn" data-tab="compaction">Compaction</button>
         <button class="tab-btn" data-tab="system">LLM Config</button>
         <button class="tab-btn" data-tab="appearance">Look & Feel</button>
+        <button class="tab-btn" data-tab="misc">Misc</button>
       </div>
 
       <div class="tab-content">
@@ -85,14 +86,15 @@
                 </div>
                 <small class="help-text">Get your key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a></small>
               </div>
+              <div class="form-group free-mode-group">
+                <label class="checkbox-label free-mode-label">
+                  <input type="checkbox" id="openrouterFreeMode" />
+                  <span>Free Mode</span>
+                </label>
+                <small class="help-text">Auto-select top free models for all categories</small>
+              </div>
               <div class="form-group">
                 <label for="openrouterModelSearch">Main Model</label>
-                <div class="model-filter-options">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="freeModelsOnly" />
-                    <span>Show only free models</span>
-                  </label>
-                </div>
                 <div class="model-search-wrapper">
                   <input
                     type="text"
@@ -103,22 +105,12 @@
                   />
                   <div id="openrouterModelDropdown" class="model-dropdown" style="display: none;"></div>
                 </div>
-                <div id="openrouterModelInfo" class="model-info" style="display: none;">
-                  <div class="model-info-name"></div>
-                  <div class="model-info-pricing"></div>
-                  <div class="model-info-capabilities"></div>
-                </div>
+                <small id="openrouterModelInfo" class="model-info-line" style="display: none;"></small>
                 <input type="hidden" id="openrouterModelSelect" />
                 <small class="saved-indicator" id="openrouterModelSaved" style="display: none;">✓ Saved</small>
               </div>
               <div class="form-group">
                 <label for="openrouterSummaryModelSearch">Summary Model (for compaction)</label>
-                <div class="model-filter-options">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="freeModelsOnlySummary" />
-                    <span>Show only free models</span>
-                  </label>
-                </div>
                 <div class="model-search-wrapper">
                   <input
                     type="text"
@@ -129,23 +121,13 @@
                   />
                   <div id="openrouterSummaryModelDropdown" class="model-dropdown" style="display: none;"></div>
                 </div>
-                <div id="openrouterSummaryModelInfo" class="model-info" style="display: none;">
-                  <div class="model-info-name"></div>
-                  <div class="model-info-pricing"></div>
-                  <div class="model-info-capabilities"></div>
-                </div>
+                <small id="openrouterSummaryModelInfo" class="model-info-line" style="display: none;"></small>
                 <input type="hidden" id="openrouterSummaryModel" />
                 <small class="saved-indicator" id="openrouterSummaryModelSaved" style="display: none;">✓ Saved</small>
                 <small class="help-text">Model used for summarizing long messages during context compaction</small>
               </div>
               <div class="form-group">
                 <label for="openrouterVisionModelSearch">Vision Model</label>
-                <div class="model-filter-options">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="freeModelsOnlyVision" />
-                    <span>Show only free models</span>
-                  </label>
-                </div>
                 <div class="model-search-wrapper">
                   <input
                     type="text"
@@ -156,11 +138,7 @@
                   />
                   <div id="openrouterVisionModelDropdown" class="model-dropdown" style="display: none;"></div>
                 </div>
-                <div id="openrouterVisionModelInfo" class="model-info" style="display: none;">
-                  <div class="model-info-name"></div>
-                  <div class="model-info-pricing"></div>
-                  <div class="model-info-capabilities"></div>
-                </div>
+                <small id="openrouterVisionModelInfo" class="model-info-line" style="display: none;"></small>
                 <input type="hidden" id="openrouterVisionModel" />
                 <small class="help-text">Model for image analysis (default: qwen/qwen2.5-vl-32b-instruct)</small>
               </div>
@@ -230,6 +208,7 @@
             <div class="form-group">
               <label for="systemPromptInput">System Prompt</label>
               <textarea id="systemPromptInput" class="input-textarea" rows="8" placeholder="Enter custom system prompt (optional)"></textarea>
+              <small class="help-text">This prompt applies to all projects. For project-specific instructions, use Project Settings from the project dropdown.</small>
             </div>
           </div>
         </div>
@@ -246,6 +225,38 @@
                 <option value="midnight">Midnight</option>
                 <option value="contrast">High Contrast</option>
               </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Misc Tab -->
+        <div id="tab-misc" class="tab-pane">
+          <div class="tab-section">
+            <h3>Updates</h3>
+            <div class="form-group">
+              <button id="checkForUpdatesBtn" class="primary">Check for Updates</button>
+              <small id="updateCheckStatus" class="help-text">Click to check for new versions</small>
+            </div>
+          </div>
+          <div class="tab-section">
+            <h3>Telemetry</h3>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="analyticsToggle" checked />
+                <span>Help improve Cando</span>
+              </label>
+              <small class="help-text">
+                We track: OS, architecture, app version, provider used.<br>
+                We DON'T track: messages, files, API keys, or personal data.<br>
+                This helps us know if there's enough usage to support your platform.
+              </small>
+            </div>
+          </div>
+          <div class="tab-section">
+            <h3>Issues</h3>
+            <div class="form-group">
+              <a href="https://github.com/cutoken/cando/issues" target="_blank" class="primary btn-link">Report an Issue</a>
+              <small class="help-text">Found a bug or have a feature request? Let us know on GitHub.</small>
             </div>
           </div>
         </div>

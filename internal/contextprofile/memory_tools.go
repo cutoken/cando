@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"cando/internal/logging"
 	"cando/internal/state"
 	"cando/internal/tooling"
 )
@@ -46,11 +47,14 @@ func (t *recallMemoryTool) Call(ctx context.Context, args map[string]any) (strin
 		return "", errors.New("memory_id is required")
 	}
 
+	logging.DevLog("memory: recalling %s", id)
+
 	// Access memory and update last access time
 	entry, err := t.store.Access(id, func(e *memoryEntry) {
 		e.LastAccess = time.Now()
 	})
 	if err != nil {
+		logging.ErrorLog("memory: failed to access %s: %v", id, err)
 		return "", err
 	}
 
@@ -75,10 +79,12 @@ func (t *recallMemoryTool) Call(ctx context.Context, args map[string]any) (strin
 			var originalMessages []state.Message
 			if err := json.Unmarshal(entry.OriginalMessages, &originalMessages); err != nil {
 				// Log unmarshal failure for debugging
+				logging.ErrorLog("memory: failed to unmarshal original messages for %s: %v", id, err)
 				expandError = fmt.Sprintf("failed to unmarshal original messages: %v", err)
 				// Note: we don't return error here to maintain backward compatibility
 				// The tool still returns the summary, just can't expand in-place
 			} else {
+				logging.DevLog("memory: expanded %s with %d original messages", id, len(originalMessages))
 				// Replace placeholder with original messages
 				before := messages[:placeholderIdx]
 				after := messages[placeholderIdx+1:]
@@ -147,10 +153,17 @@ func (t *pinMemoryTool) Call(ctx context.Context, args map[string]any) (string, 
 		return "", errors.New("memory_id is required")
 	}
 	pin := argBool(args, "pin", true)
+
+	logging.DevLog("memory: %s memory %s", map[bool]string{true: "pinning", false: "unpinning"}[pin], id)
+
 	entry, err := t.store.Pin(id, pin, t.maxPins)
 	if err != nil {
+		logging.ErrorLog("memory: failed to %s %s: %v", map[bool]string{true: "pin", false: "unpin"}[pin], id, err)
 		return "", err
 	}
+
+	logging.UserLog("Memory %s %s successfully (pinned count: %d)", id, map[bool]string{true: "pinned", false: "unpinned"}[pin], t.store.PinnedCount())
+
 	payload := map[string]any{
 		"memory_id":    entry.ID,
 		"pinned":       entry.Pinned,

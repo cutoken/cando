@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -31,14 +32,29 @@ type Manager struct {
 func NewManager() (*Manager, error) {
 	credPath := os.Getenv("CANDO_CREDENTIALS_PATH")
 	if credPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("get home directory: %w", err)
-		}
-		credPath = filepath.Join(home, ".cando", "credentials.yaml")
+		configDir := getConfigDir()
+		credPath = filepath.Join(configDir, "credentials.yaml")
 	}
 
 	return &Manager{path: credPath}, nil
+}
+
+func getConfigDir() string {
+	if configDir := os.Getenv("CANDO_CONFIG_DIR"); configDir != "" {
+		return configDir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".cando"
+	}
+
+	// Check if running as beta version
+	execName := filepath.Base(os.Args[0])
+	if strings.Contains(execName, "beta") {
+		return filepath.Join(home, ".cando-beta")
+	}
+
+	return filepath.Join(home, ".cando")
 }
 
 // Load reads credentials from disk

@@ -1,35 +1,25 @@
 {{define "onboarding"}}
 <!-- Onboarding Dialog -->
 <div id="onboardingDialog" class="dialog-overlay" style="display: none;">
-  <div class="dialog-content">
+  <div class="dialog-content onboarding-dialog">
     <div class="dialog-header">
       <h2>Welcome to Cando</h2>
     </div>
     <div class="dialog-body">
-      <p>To get started, please configure your AI provider.</p>
+      <p>Configure your AI provider to get started.</p>
 
       <div class="onboarding-form">
-        <div class="form-group">
-          <label>Select Provider</label>
-          <div class="provider-options">
-            <label class="radio-option">
-              <input type="radio" name="provider" value="zai" checked />
-              <div class="radio-label">
-                <strong>Z.AI</strong>
-                <span>Fast Chinese models (GLM-4, recommended)</span>
-              </div>
-            </label>
-            <label class="radio-option">
-              <input type="radio" name="provider" value="openrouter" />
-              <div class="radio-label">
-                <strong>OpenRouter</strong>
-                <span>Access to Claude, GPT-4, and more</span>
-              </div>
-            </label>
+        <div class="form-row">
+          <div class="form-group compact">
+            <label for="providerSelect">Provider</label>
+            <select id="providerSelect">
+              <option value="zai">Z.AI (GLM models)</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
           </div>
         </div>
 
-        <div class="form-group">
+        <div class="form-group compact">
           <label for="apiKeyInput">API Key</label>
           <input type="password" id="apiKeyInput" placeholder="Enter your API key" />
           <small id="apiKeyHelp" class="help-text">

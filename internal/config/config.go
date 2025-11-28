@@ -2,25 +2,102 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"cando/internal/config/migrate"
 	"cando/internal/prompts"
 	"gopkg.in/yaml.v3"
 )
+
+// ProviderModelDefaults holds default models for each provider - single source of truth
+type ProviderModelDefaults struct {
+	Main    string
+	Summary string
+	VL      string
+}
+
+// ProviderDefaults maps provider keys to their default models
+var ProviderDefaults = map[string]ProviderModelDefaults{
+	"zai": {
+		Main:    "glm-4.6",
+		Summary: "glm-4.5-air",
+		VL:      "glm-4.5v",
+	},
+	"openrouter": {
+		Main:    "deepseek/deepseek-chat-v3-0324",
+		Summary: "qwen/qwen3-30b-a3b-instruct-2507",
+		VL:      "qwen/qwen2.5-vl-32b-instruct",
+	},
+	"mock": {
+		Main:    "mock-model",
+		Summary: "mock-summary-model",
+		VL:      "mock-vl-model",
+	},
+}
+
+// KnownProviders returns the list of all known provider keys
+func KnownProviders() []string {
+	return []string{"zai", "openrouter", "mock"}
+}
+
+// DefaultConfig returns a config with all defaults set - SINGLE SOURCE OF TRUTH
+func DefaultConfig() Config {
+	cfg := Config{
+		ConfigVersion:         1, // Current version
+		Temperature:           0.7,
+		ThinkingEnabled:       true,
+		ForceThinking:         false,
+		ContextProfile:        "memory",
+		ContextMessagePercent: 0.02,
+		ContextTotalPercent:   0.80,
+		ContextProtectRecent:  2,
+		WorkspaceRoot:         ".",
+		SystemPrompt:          "",
+		RequestTimeoutSeconds: 90,
+		ShellTimeoutSeconds:   60,
+		CompactionPrompt:      DefaultCompactionPrompt,
+		ZAIBaseURL:            "https://api.z.ai/api/coding/paas/v4/chat/completions",
+		ZAIVisionURL:          "https://api.z.ai/api/coding/paas/v4/chat/completions",
+		OpenRouterBaseURL:     "https://openrouter.ai/api/v1",
+		OpenRouterVisionURL:   "https://openrouter.ai/api/v1/chat/completions",
+		ProviderModels:        make(map[string]string),
+		ProviderSummaryModels: make(map[string]string),
+		ProviderVLModels:      make(map[string]string),
+	}
+
+	// Populate all provider defaults
+	for _, p := range KnownProviders() {
+		defaults := ProviderDefaults[p]
+		cfg.ProviderModels[p] = defaults.Main
+		cfg.ProviderSummaryModels[p] = defaults.Summary
+		cfg.ProviderVLModels[p] = defaults.VL
+	}
+
+	// Set OpenRouter as default provider models
+	cfg.Model = ProviderDefaults["openrouter"].Main
+	cfg.SummaryModel = ProviderDefaults["openrouter"].Summary
+	cfg.VLModel = ProviderDefaults["openrouter"].VL
+
+	return cfg
+}
 
 // Config captures the tunable runtime settings for the agent.
 const DefaultCompactionPrompt = "Summarize the following text in 20 words or fewer. Return only the summary."
 
 type Config struct {
+	ConfigVersion         int               `yaml:"config_version"`
 	Model                 string            `yaml:"model"`
 	SummaryModel          string            `yaml:"summary_model"`
+	VLModel               string            `yaml:"vl_model"`
 	BaseURL               string            `yaml:"base_url"`
 	Provider              string            `yaml:"provider"`
 	ProviderModels        map[string]string `yaml:"provider_models"`
 	ProviderSummaryModels map[string]string `yaml:"provider_summary_models"`
+	ProviderVLModels      map[string]string `yaml:"provider_vl_models"`
 	Temperature           float64           `yaml:"temperature"`
 	SystemPrompt          string            `yaml:"system_prompt"`
 	RequestTimeoutSeconds int               `yaml:"request_timeout_seconds"`
@@ -29,6 +106,9 @@ type Config struct {
 	ShellTimeoutSeconds   int               `yaml:"shell_timeout_seconds"`
 	ContextProfile        string            `yaml:"context_profile"`
 	ZAIBaseURL            string            `yaml:"zai_base_url"`
+	ZAIVisionURL          string            `yaml:"zai_vision_url"`
+	OpenRouterBaseURL     string            `yaml:"openrouter_base_url"`
+	OpenRouterVisionURL   string            `yaml:"openrouter_vision_url"`
 	ContextMessagePercent float64           `yaml:"context_message_percent"`
 	ContextTotalPercent   float64           `yaml:"context_conversation_percent"`
 	ContextProtectRecent  int               `yaml:"context_protect_recent"`
@@ -37,21 +117,27 @@ type Config struct {
 	ThinkingEnabled       bool              `yaml:"thinking_enabled"`
 	ForceThinking         bool              `yaml:"force_thinking"`
 	CompactionPrompt      string            `yaml:"compaction_summary_prompt"`
+	OpenRouterFreeMode    bool              `yaml:"openrouter_free_mode"`
+	AnalyticsEnabled      *bool             `yaml:"analytics_enabled,omitempty"` // nil = default true
 }
 
-// EnsureDefaultConfig creates ~/.cando/config.yaml with provider-appropriate defaults if it doesn't exist
-func EnsureDefaultConfig(provider string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("get home directory: %w", err)
+// IsAnalyticsEnabled returns true if analytics is enabled (default: true)
+func (c Config) IsAnalyticsEnabled() bool {
+	if c.AnalyticsEnabled == nil {
+		return true // default on
 	}
+	return *c.AnalyticsEnabled
+}
 
-	configDir := filepath.Join(home, ".cando")
+// EnsureDefaultConfig creates config.yaml with provider-appropriate defaults if it doesn't exist
+func EnsureDefaultConfig(provider string) error {
+	configDir := GetConfigDir()
 	configPath := filepath.Join(configDir, "config.yaml")
 
-	// If config already exists, nothing to do
+	// If config already exists, ensure all providers have defaults
 	if _, err := os.Stat(configPath); err == nil {
-		return nil
+		// Config exists, but might be missing some provider defaults
+		return EnsureAllProviderDefaults(configPath)
 	}
 
 	// Create .cando directory if needed
@@ -59,46 +145,24 @@ func EnsureDefaultConfig(provider string) error {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
-	// Create provider-specific defaults
-	cfg := Config{}
-	switch strings.ToLower(provider) {
-	case "zai":
-		cfg.Model = "glm-4.6"
-		cfg.ProviderModels = map[string]string{
-			"zai": "glm-4.6",
-		}
-		cfg.SummaryModel = "glm-4.5-air"
-		cfg.ProviderSummaryModels = map[string]string{
-			"zai":        "glm-4.5-air",
-			"openrouter": "qwen/qwen3-next-80b-a3b-instruct",
-		}
-		cfg.ZAIBaseURL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-	case "openrouter":
-		cfg.Model = "qwen/qwen-2.5-72b-instruct"
-		cfg.ProviderModels = map[string]string{
-			"openrouter": "qwen/qwen-2.5-72b-instruct",
-		}
-		cfg.SummaryModel = "qwen/qwen3-next-80b-a3b-instruct"
-		cfg.ProviderSummaryModels = map[string]string{
-			"zai":        "glm-4.5-air",
-			"openrouter": "qwen/qwen3-next-80b-a3b-instruct",
-		}
-	default:
-		// Use general defaults
-		cfg.Model = "qwen/qwen-2.5-72b-instruct"
+	// Start with defaults from single source of truth
+	cfg := DefaultConfig()
+
+	// Override with provider-specific settings
+	provider = strings.ToLower(provider)
+	if defaults, ok := ProviderDefaults[provider]; ok {
+		cfg.Model = defaults.Main
+		cfg.SummaryModel = defaults.Summary
+		cfg.VLModel = defaults.VL
+	} else if provider != "" {
+		// Unknown provider - add it with OpenRouter defaults
+		orDefaults := ProviderDefaults["openrouter"]
+		cfg.ProviderModels[provider] = orDefaults.Main
+		cfg.ProviderSummaryModels[provider] = orDefaults.Summary
+		cfg.ProviderVLModels[provider] = orDefaults.VL
 	}
 
-	// Apply standard defaults for other fields
-	cfg.Temperature = 0.7
-	cfg.ThinkingEnabled = true
-	cfg.ForceThinking = true
-	cfg.ContextProfile = "memory"
-	cfg.ContextMessagePercent = 0.02 // 2% of model context
-	cfg.ContextTotalPercent = 0.50   // 50% of model context
-	cfg.ContextProtectRecent = 5
-	cfg.CompactionPrompt = DefaultCompactionPrompt
-	cfg.WorkspaceRoot = "."
-	cfg.SystemPrompt = ""
+	// No provider-specific overrides - everything comes from DefaultConfig
 
 	// Write config file
 	data, err := yaml.Marshal(&cfg)
@@ -113,23 +177,143 @@ func EnsureDefaultConfig(provider string) error {
 	return nil
 }
 
+// EnsureAllProviderDefaults ensures all provider maps have default values for all known providers.
+// Only writes to disk if changes were actually made.
+func EnsureAllProviderDefaults(configPath string) error {
+	// Load existing config
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("unmarshal config: %w", err)
+	}
+
+	// Track if any changes were made
+	var changes []string
+
+	// Ensure thinking is enabled by default for existing configs
+	// This handles upgrades from older versions without the field
+	if !cfg.ThinkingEnabled && !cfg.ForceThinking {
+		cfg.ThinkingEnabled = true
+		changes = append(changes, "enabled thinking mode (default)")
+	}
+
+	// Ensure provider URLs are set
+	defaultCfg := DefaultConfig()
+	if cfg.ZAIBaseURL == "" {
+		cfg.ZAIBaseURL = defaultCfg.ZAIBaseURL
+		changes = append(changes, fmt.Sprintf("zai_base_url=%s", cfg.ZAIBaseURL))
+	}
+	if cfg.ZAIVisionURL == "" {
+		cfg.ZAIVisionURL = defaultCfg.ZAIVisionURL
+		changes = append(changes, fmt.Sprintf("zai_vision_url=%s", cfg.ZAIVisionURL))
+	}
+	if cfg.OpenRouterBaseURL == "" {
+		cfg.OpenRouterBaseURL = defaultCfg.OpenRouterBaseURL
+		changes = append(changes, fmt.Sprintf("openrouter_base_url=%s", cfg.OpenRouterBaseURL))
+	}
+	if cfg.OpenRouterVisionURL == "" {
+		cfg.OpenRouterVisionURL = defaultCfg.OpenRouterVisionURL
+		changes = append(changes, fmt.Sprintf("openrouter_vision_url=%s", cfg.OpenRouterVisionURL))
+	}
+
+	// Initialize maps if nil
+	if cfg.ProviderModels == nil {
+		cfg.ProviderModels = make(map[string]string)
+	}
+	if cfg.ProviderSummaryModels == nil {
+		cfg.ProviderSummaryModels = make(map[string]string)
+	}
+	if cfg.ProviderVLModels == nil {
+		cfg.ProviderVLModels = make(map[string]string)
+	}
+
+	// Ensure all providers have defaults using the ProviderDefaults map
+	for _, provider := range KnownProviders() {
+		defaults, ok := ProviderDefaults[provider]
+		if !ok {
+			continue
+		}
+
+		// Main models
+		if cfg.ProviderModels[provider] == "" {
+			cfg.ProviderModels[provider] = defaults.Main
+			changes = append(changes, fmt.Sprintf("%s.main=%s", provider, defaults.Main))
+		}
+
+		// Summary models
+		if cfg.ProviderSummaryModels[provider] == "" {
+			cfg.ProviderSummaryModels[provider] = defaults.Summary
+			changes = append(changes, fmt.Sprintf("%s.summary=%s", provider, defaults.Summary))
+		}
+
+		// VL models
+		if cfg.ProviderVLModels[provider] == "" {
+			cfg.ProviderVLModels[provider] = defaults.VL
+			changes = append(changes, fmt.Sprintf("%s.vl=%s", provider, defaults.VL))
+		}
+	}
+
+	// Only write if changes were made
+	if len(changes) == 0 {
+		return nil
+	}
+
+	log.Printf("Config: adding missing provider defaults: %v", changes)
+
+	updatedData, err := yaml.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("marshal updated config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, updatedData, 0644); err != nil {
+		return fmt.Errorf("write updated config: %w", err)
+	}
+
+	return nil
+}
+
 // LoadUserConfig loads configuration from ~/.cando/config.yaml
 // Checks CANDO_CONFIG_PATH environment variable first.
 // If the file doesn't exist, returns defaults
 func LoadUserConfig() (Config, error) {
 	configPath := os.Getenv("CANDO_CONFIG_PATH")
 	if configPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return Config{}, fmt.Errorf("get home directory: %w", err)
-		}
-		configPath = filepath.Join(home, ".cando", "config.yaml")
+		configPath = filepath.Join(GetConfigDir(), "config.yaml")
 	}
 
-	// If file doesn't exist, return defaults
+	// Run migrations first (if config exists)
+	if _, err := os.Stat(configPath); err == nil {
+		if err := migrate.MigrateConfig(configPath); err != nil {
+			log.Printf("Warning: config migration failed: %v", err)
+			// Continue with unmigrated config
+		}
+	}
+
+	// If file doesn't exist, create it with defaults
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		cfg := Config{}
-		cfg.applyDefaults()
+		// Create config with defaults from single source of truth
+		cfg := DefaultConfig()
+
+		// Ensure directory exists
+		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+			return Config{}, fmt.Errorf("create config dir: %w", err)
+		}
+
+		// Write the default config
+		data, err := yaml.Marshal(&cfg)
+		if err != nil {
+			return Config{}, fmt.Errorf("marshal default config: %w", err)
+		}
+		if err := os.WriteFile(configPath, data, 0644); err != nil {
+			return Config{}, fmt.Errorf("write default config: %w", err)
+		}
+
+		// Apply computed values before returning
+		cfg.applyComputedPaths()
 		return cfg, nil
 	}
 
@@ -143,7 +327,7 @@ func LoadUserConfig() (Config, error) {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
 
-	cfg.applyDefaults()
+	cfg.applyComputedPaths()
 	cfg.cleanSystemPrompt()
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
@@ -163,7 +347,7 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
-	cfg.applyDefaults()
+	cfg.applyComputedPaths()
 	cfg.cleanSystemPrompt()
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
@@ -171,43 +355,12 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// applyDefaults fills in optional values to keep the YAML file concise.
-func (c *Config) applyDefaults() {
-	if c.BaseURL == "" {
-		c.BaseURL = "https://openrouter.ai/api/v1"
-	}
-	if c.Model == "" {
-		c.Model = "qwen/qwen2-80b-instruct"
-	}
-	if c.SummaryModel == "" {
-		c.SummaryModel = "glm-4.5-air"
-	}
-	if c.Temperature == 0 {
-		c.Temperature = 0.2
-	}
-	if c.RequestTimeoutSeconds <= 0 {
-		c.RequestTimeoutSeconds = 90
-	}
+// applyComputedPaths sets computed paths based on workspace root and config dir
+// This ONLY sets paths that are derived from other values, never user preferences
+func (c *Config) applyComputedPaths() {
+	// Only set computed paths if not already set
 	if c.ConversationDir == "" {
-		c.ConversationDir = "conversations"
-	}
-	if c.WorkspaceRoot == "" {
-		c.WorkspaceRoot = "."
-	}
-	if c.ShellTimeoutSeconds <= 0 {
-		c.ShellTimeoutSeconds = 60
-	}
-	if c.ContextProfile == "" {
-		c.ContextProfile = "default"
-	}
-	if c.ZAIBaseURL == "" {
-		c.ZAIBaseURL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-	}
-	if c.ContextMessagePercent <= 0 {
-		c.ContextMessagePercent = 0.02 // 2% default
-	}
-	if c.ContextTotalPercent <= 0 {
-		c.ContextTotalPercent = 0.50 // 50% default
+		c.ConversationDir = filepath.Join(GetConfigDir(), "conversations")
 	}
 	if c.MemoryStorePath == "" {
 		root := c.WorkspaceRoot
@@ -222,12 +375,6 @@ func (c *Config) applyDefaults() {
 			root = "."
 		}
 		c.HistoryPath = filepath.Join(root, ".cando_history")
-	}
-	if strings.TrimSpace(c.CompactionPrompt) == "" {
-		c.CompactionPrompt = DefaultCompactionPrompt
-	}
-	if strings.TrimSpace(c.SummaryModel) == "" {
-		c.SummaryModel = "glm-4.5-air"
 	}
 }
 
@@ -338,14 +485,73 @@ func absPath(path string) string {
 	return abs
 }
 
-// ModelFor returns the configured model for the given provider key, falling back to the default Model.
+func GetConfigDir() string {
+	if configDir := os.Getenv("CANDO_CONFIG_DIR"); configDir != "" {
+		return configDir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".cando"
+	}
+
+	// Check if running as beta version
+	execName := filepath.Base(os.Args[0])
+	if strings.Contains(execName, "beta") {
+		return filepath.Join(home, ".cando-beta")
+	}
+
+	return filepath.Join(home, ".cando")
+}
+
+// ModelFor returns the configured model for the given provider key, falling back to provider-appropriate defaults.
 func (c Config) ModelFor(provider string) string {
+	provider = strings.ToLower(provider)
+
 	if len(c.ProviderModels) > 0 {
-		if model := strings.TrimSpace(c.ProviderModels[strings.ToLower(provider)]); model != "" {
+		if model := strings.TrimSpace(c.ProviderModels[provider]); model != "" {
 			return model
 		}
 	}
+
+	if defaults, ok := ProviderDefaults[provider]; ok {
+		return defaults.Main
+	}
 	return c.Model
+}
+
+// SummaryModelFor returns the configured summary model for the given provider key, falling back to provider-appropriate defaults.
+func (c Config) SummaryModelFor(provider string) string {
+	provider = strings.ToLower(provider)
+
+	if len(c.ProviderSummaryModels) > 0 {
+		if model := strings.TrimSpace(c.ProviderSummaryModels[provider]); model != "" {
+			return model
+		}
+	}
+
+	if defaults, ok := ProviderDefaults[provider]; ok {
+		return defaults.Summary
+	}
+	return c.SummaryModel
+}
+
+// VLModelFor returns the appropriate VL (Vision Language) model for a provider
+func (c Config) VLModelFor(provider string) string {
+	provider = strings.ToLower(provider)
+
+	if len(c.ProviderVLModels) > 0 {
+		if model := strings.TrimSpace(c.ProviderVLModels[provider]); model != "" {
+			return model
+		}
+	}
+
+	if defaults, ok := ProviderDefaults[provider]; ok {
+		return defaults.VL
+	}
+	if model := strings.TrimSpace(c.VLModel); model != "" {
+		return model
+	}
+	return ProviderDefaults["openrouter"].VL
 }
 
 // CalculateMessageThreshold returns the absolute character threshold for message compaction
@@ -378,14 +584,17 @@ func (c Config) CalculateConversationThreshold(provider, model string) int {
 func Save(c Config) error {
 	configPath := os.Getenv("CANDO_CONFIG_PATH")
 	if configPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		configPath = filepath.Join(home, ".cando", "config.yaml")
+		configPath = filepath.Join(GetConfigDir(), "config.yaml")
 	}
 
-	data, err := yaml.Marshal(c)
+	// Clear runtime-calculated paths before saving
+	// These are set dynamically based on workspace and shouldn't be persisted
+	saveConfig := c
+	saveConfig.ConversationDir = ""
+	saveConfig.MemoryStorePath = ""
+	saveConfig.HistoryPath = ""
+
+	data, err := yaml.Marshal(saveConfig)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}

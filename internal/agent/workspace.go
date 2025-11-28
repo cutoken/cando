@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"cando/internal/config"
 )
 
 // Workspace represents a folder selected by the user
@@ -37,12 +39,7 @@ type workspaceFile struct {
 
 // NewWorkspaceManager creates a workspace manager with persistence
 func NewWorkspaceManager() (*WorkspaceManager, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("get home dir: %w", err)
-	}
-
-	candoDir := filepath.Join(home, ".cando")
+	candoDir := config.GetConfigDir()
 	if err := os.MkdirAll(candoDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create .cando dir: %w", err)
 	}
@@ -342,10 +339,6 @@ func sanitizeSlug(name string) string {
 // ProjectStorageRoot returns the storage directory for a workspace
 // Returns: ~/.cando/projects/<slug>/
 func ProjectStorageRoot(workspace string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("get home dir: %w", err)
-	}
 	slug := generateSlug(workspace)
-	return filepath.Join(home, ".cando", "projects", slug), nil
+	return filepath.Join(config.GetConfigDir(), "projects", slug), nil
 }

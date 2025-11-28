@@ -1,0 +1,4 @@
+model: glm-4.6
+provider: zai
+context_conversation_percent: 0.9
+thinking_enabled: true

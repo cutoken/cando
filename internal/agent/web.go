@@ -7,18 +7,25 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"cando/internal/analytics"
 	"cando/internal/config"
 	"cando/internal/contextprofile"
 	"cando/internal/credentials"
+	"cando/internal/logging"
 	"cando/internal/state"
 	"cando/internal/tooling"
 )
@@ -43,6 +50,21 @@ var openrouterModels []byte
 
 var templates *template.Template
 
+// OpenRouter models cache for daily refresh
+const (
+	openrouterModelsURL     = "https://openrouter.ai/api/frontend/models/find?order=top-weekly"
+	openrouterCacheDuration = 24 * time.Hour
+	openrouterFetchTimeout  = 30 * time.Second
+)
+
+type openrouterModelCache struct {
+	data      []byte
+	fetchedAt time.Time
+	mu        sync.RWMutex
+}
+
+var orModelCache = &openrouterModelCache{}
+
 // RunWeb launches the embedded HTML interface instead of the CLI REPL.
 func (a *Agent) RunWeb(ctx context.Context, addr string) error {
 	clean := strings.TrimSpace(addr)
@@ -63,6 +85,8 @@ type webServer struct {
 	logger           *log.Logger
 	actualAddr       string
 	workspaceManager *WorkspaceManager
+	httpServer       *http.Server
+	shutdownCh       chan struct{}
 }
 
 func (s *webServer) run(ctx context.Context) error {
@@ -106,8 +130,6 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/cancel", s.handleCancel)
 	mux.HandleFunc("/api/provider", s.handleProviderSwitch)
 	mux.HandleFunc("/api/provider/model", s.handleProviderModelUpdate)
-	mux.HandleFunc("/api/provider/summary-model", s.handleProviderSummaryModelUpdate)
-	mux.HandleFunc("/api/provider/vision-model", s.handleProviderVisionModelUpdate)
 	mux.HandleFunc("/api/compaction-history", s.handleCompactionHistory)
 	mux.HandleFunc("/api/credentials", s.handleCredentials)
 	mux.HandleFunc("/api/files", s.handleFileSearch)
@@ -117,15 +139,34 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/workspace/switch", s.handleWorkspaceSwitch)
 	mux.HandleFunc("/api/workspace/remove", s.handleWorkspaceRemove)
 	mux.HandleFunc("/api/browse", s.handleBrowse)
+	mux.HandleFunc("/api/folder/create", s.handleFolderCreate)
 	mux.HandleFunc("/api/branch", s.handleBranch)
+	mux.HandleFunc("/api/project/instructions", s.handleProjectInstructions)
+	mux.HandleFunc("/api/health", s.handleHealth)
+	mux.HandleFunc("/api/update-check", s.handleUpdateCheck)
+	mux.HandleFunc("/api/update", s.handleUpdate)
+	mux.HandleFunc("/api/restart", s.handleRestart)
+	mux.HandleFunc("/api/update/dismiss", s.handleUpdateDismiss)
+	mux.HandleFunc("/api/telemetry", s.handleTelemetry)
+	mux.HandleFunc("/api/files/tree", s.handleFilesTree)
+	mux.HandleFunc("/api/files/read", s.handleFilesRead)
+	mux.HandleFunc("/api/files/save", s.handleFilesSave)
+	mux.HandleFunc("/api/files/create", s.handleFilesCreate)
+	mux.HandleFunc("/api/files/mkdir", s.handleFilesMkdir)
+	mux.HandleFunc("/api/files/reveal", s.handleFilesReveal)
 
 	server := &http.Server{
 		Addr:    actualAddr,
 		Handler: s.logRequests(mux),
 	}
+	s.httpServer = server
+	s.shutdownCh = make(chan struct{})
 
 	go func() {
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-s.shutdownCh:
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
@@ -143,8 +184,14 @@ func (s *webServer) run(ctx context.Context) error {
 func (s *webServer) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		workspace := s.getWorkspaceFromRequest(r)
 		next.ServeHTTP(w, r)
-		s.logger.Printf("[%s] %s %s (%s)", r.RemoteAddr, r.Method, r.URL.Path, time.Since(start).Round(time.Millisecond))
+		duration := time.Since(start).Round(time.Millisecond)
+		if workspace != "" {
+			s.logger.Printf("[ws:%s] [%s] %s %s (%s)", workspace, r.RemoteAddr, r.Method, r.URL.Path, duration)
+		} else {
+			s.logger.Printf("[%s] %s %s (%s)", r.RemoteAddr, r.Method, r.URL.Path, duration)
+		}
 	})
 }
 
@@ -153,8 +200,13 @@ func (s *webServer) logRequestError(r *http.Request, status int, message string)
 		return
 	}
 	workspace := s.getWorkspaceFromRequest(r)
-	s.logger.Printf("[WEB] error status=%d method=%s path=%s workspace=%s remote=%s: %s",
-		status, r.Method, r.URL.Path, workspace, r.RemoteAddr, message)
+	if workspace != "" {
+		s.logger.Printf("[ERROR] [ws:%s] status=%d method=%s path=%s remote=%s: %s",
+			workspace, status, r.Method, r.URL.Path, r.RemoteAddr, message)
+	} else {
+		s.logger.Printf("[ERROR] status=%d method=%s path=%s remote=%s: %s",
+			status, r.Method, r.URL.Path, r.RemoteAddr, message)
+	}
 }
 
 func (s *webServer) respondError(w http.ResponseWriter, r *http.Request, status int, message string) {
@@ -243,7 +295,133 @@ func (s *webServer) handleLucide(w http.ResponseWriter, r *http.Request) {
 
 func (s *webServer) handleOpenRouterModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_, _ = w.Write(openrouterModels)
+	data := s.getOpenRouterModels()
+	_, _ = w.Write(data)
+}
+
+// getOpenRouterModels returns cached models, fetches fresh if stale, falls back to embedded
+func (s *webServer) getOpenRouterModels() []byte {
+	orModelCache.mu.RLock()
+	if time.Since(orModelCache.fetchedAt) < openrouterCacheDuration && len(orModelCache.data) > 0 {
+		defer orModelCache.mu.RUnlock()
+		return orModelCache.data
+	}
+	orModelCache.mu.RUnlock()
+
+	// Try to fetch fresh data in background if cache exists but stale
+	if len(orModelCache.data) > 0 {
+		go s.refreshOpenRouterModels()
+		orModelCache.mu.RLock()
+		defer orModelCache.mu.RUnlock()
+		return orModelCache.data
+	}
+
+	// No cache - fetch synchronously
+	data, err := fetchOpenRouterModels()
+	if err != nil {
+		logging.DevLog("openrouter models fetch failed: %v, using embedded fallback", err)
+		return openrouterModels
+	}
+
+	orModelCache.mu.Lock()
+	orModelCache.data = data
+	orModelCache.fetchedAt = time.Now()
+	orModelCache.mu.Unlock()
+
+	logging.DevLog("openrouter models fetched: %d bytes", len(data))
+	return data
+}
+
+func (s *webServer) refreshOpenRouterModels() {
+	data, err := fetchOpenRouterModels()
+	if err != nil {
+		logging.DevLog("openrouter models background refresh failed: %v", err)
+		return
+	}
+
+	orModelCache.mu.Lock()
+	orModelCache.data = data
+	orModelCache.fetchedAt = time.Now()
+	orModelCache.mu.Unlock()
+	logging.DevLog("openrouter models refreshed: %d bytes", len(data))
+}
+
+// fetchOpenRouterModels fetches and transforms models from OpenRouter API
+func fetchOpenRouterModels() ([]byte, error) {
+	client := &http.Client{Timeout: openrouterFetchTimeout}
+	resp, err := client.Get(openrouterModelsURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body failed: %w", err)
+	}
+
+	// Parse the response and transform to our format
+	var apiResp struct {
+		Data struct {
+			Models []struct {
+				Name            string   `json:"name"`
+				InputModalities []string `json:"input_modalities"`
+				HasTextOutput   bool     `json:"has_text_output"`
+				Endpoint        struct {
+					ModelVariantSlug string `json:"model_variant_slug"`
+					Pricing          struct {
+						Prompt     string `json:"prompt"`
+						Completion string `json:"completion"`
+					} `json:"pricing"`
+				} `json:"endpoint"`
+			} `json:"models"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("parse failed: %w", err)
+	}
+
+	// Transform to our format
+	type modelEntry struct {
+		ID           string   `json:"id"`
+		Name         string   `json:"name"`
+		Capabilities []string `json:"capabilities"`
+		Pricing      struct {
+			Prompt     string `json:"prompt"`
+			Completion string `json:"completion"`
+		} `json:"pricing"`
+	}
+
+	var models []modelEntry
+	for _, m := range apiResp.Data.Models {
+		if !m.HasTextOutput || m.Endpoint.ModelVariantSlug == "" {
+			continue
+		}
+		models = append(models, modelEntry{
+			ID:           m.Endpoint.ModelVariantSlug,
+			Name:         m.Name,
+			Capabilities: m.InputModalities,
+			Pricing: struct {
+				Prompt     string `json:"prompt"`
+				Completion string `json:"completion"`
+			}{
+				Prompt:     m.Endpoint.Pricing.Prompt,
+				Completion: m.Endpoint.Pricing.Completion,
+			},
+		})
+	}
+
+	// Sanity check: if we got very few models, API structure likely changed
+	if len(models) < 100 {
+		return nil, fmt.Errorf("too few models returned (%d), API structure may have changed", len(models))
+	}
+
+	return json.Marshal(models)
 }
 
 func (s *webServer) handleSession(w http.ResponseWriter, r *http.Request) {
@@ -320,7 +498,7 @@ func (s *webServer) handleStream(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, r, http.StatusBadRequest, "select a workspace first")
 		return
 	}
-	s.agent.logger.Printf("[WEB] handleStream: workspace=%s", workspace)
+	s.agent.logger.Printf("[ws:%s] handleStream: starting conversation", workspace)
 	wsCtx, err := s.agent.GetOrCreateWorkspaceContext(workspace)
 	if err != nil {
 		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("get workspace context: %v", err))
@@ -462,7 +640,7 @@ func (s *webServer) handleState(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, r, http.StatusBadRequest, "select a workspace first")
 		return
 	}
-	s.agent.logger.Printf("[WEB] handleState: workspace=%s, action=%s, key=%s", workspace, req.Action, req.Key)
+	s.agent.logger.Printf("[ws:%s] handleState: action=%s, key=%s", workspace, req.Action, req.Key)
 	wsCtx, err := s.agent.GetOrCreateWorkspaceContext(workspace)
 	if err != nil {
 		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("get workspace context: %v", err))
@@ -523,7 +701,6 @@ func (s *webServer) handleThinking(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
 		return
 	}
-	s.agent.thinkingEnabled = req.Enabled
 	s.agent.cfg.ThinkingEnabled = req.Enabled
 
 	// Save to disk
@@ -547,7 +724,6 @@ func (s *webServer) handleForceThinking(w http.ResponseWriter, r *http.Request) 
 		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
 		return
 	}
-	s.agent.forceThinking = req.Enabled
 	s.agent.cfg.ForceThinking = req.Enabled
 
 	// Save to disk
@@ -599,6 +775,7 @@ func (s *webServer) handleProviderSwitch(w http.ResponseWriter, r *http.Request)
 	s.writeSessionPayload(w, r)
 }
 
+// handleProviderModelUpdate handles all model type updates (main, summary, vision)
 func (s *webServer) handleProviderModelUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
@@ -606,8 +783,9 @@ func (s *webServer) handleProviderModelUpdate(w http.ResponseWriter, r *http.Req
 	}
 
 	var req struct {
-		Provider string `json:"provider"`
-		Model    string `json:"model"`
+		Provider  string `json:"provider"`
+		ModelType string `json:"model_type"` // "main", "summary", or "vision"
+		Model     string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
@@ -619,66 +797,35 @@ func (s *webServer) handleProviderModelUpdate(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Update config
-	if s.agent.cfg.ProviderModels == nil {
-		s.agent.cfg.ProviderModels = make(map[string]string)
+	// Default to "main" if model_type not specified (backwards compatibility)
+	if req.ModelType == "" {
+		req.ModelType = "main"
 	}
-	s.agent.cfg.ProviderModels[req.Provider] = req.Model
 
-	// Save config to disk
-	if err := config.Save(s.agent.cfg); err != nil {
-		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
+	// Update the appropriate config field based on model type
+	switch req.ModelType {
+	case "main":
+		if s.agent.cfg.ProviderModels == nil {
+			s.agent.cfg.ProviderModels = make(map[string]string)
+		}
+		s.agent.cfg.ProviderModels[req.Provider] = req.Model
+	case "summary":
+		if s.agent.cfg.ProviderSummaryModels == nil {
+			s.agent.cfg.ProviderSummaryModels = make(map[string]string)
+		}
+		s.agent.cfg.ProviderSummaryModels[req.Provider] = req.Model
+		// Update current summary model if this is the active provider
+		if req.Provider == s.agent.cfg.Provider {
+			s.agent.cfg.SummaryModel = req.Model
+		}
+	case "vision":
+		if s.agent.cfg.ProviderVLModels == nil {
+			s.agent.cfg.ProviderVLModels = make(map[string]string)
+		}
+		s.agent.cfg.ProviderVLModels[req.Provider] = req.Model
+	default:
+		s.respondError(w, r, http.StatusBadRequest, "invalid model_type: must be main, summary, or vision")
 		return
-	}
-
-	s.logger.Printf("Updated %s model to %s", req.Provider, req.Model)
-
-	// Reload providers to pick up new model immediately
-	if err := s.agent.ReloadProviders(); err != nil {
-		s.logger.Printf("Warning: failed to reload providers after model change: %v", err)
-		s.writeJSON(w, r, map[string]any{
-			"success": true,
-			"message": "Model saved but provider reload failed. Please restart Cando.",
-		})
-		return
-	}
-
-	s.writeJSON(w, r, map[string]any{
-		"success": true,
-		"message": fmt.Sprintf("Model updated to %s! Change is active now.", req.Model),
-	})
-}
-
-func (s *webServer) handleProviderSummaryModelUpdate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var req struct {
-		Provider string `json:"provider"`
-		Model    string `json:"model"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
-		return
-	}
-
-	if req.Provider == "" || req.Model == "" {
-		s.respondError(w, r, http.StatusBadRequest, "provider and model are required")
-		return
-	}
-
-	// Update config
-	if s.agent.cfg.ProviderSummaryModels == nil {
-		s.agent.cfg.ProviderSummaryModels = make(map[string]string)
-	}
-	s.agent.cfg.ProviderSummaryModels[req.Provider] = req.Model
-
-	// Update the current summary model if this is the active provider
-	currentProvider := s.agent.cfg.Provider
-	if req.Provider == currentProvider {
-		s.agent.cfg.SummaryModel = req.Model
 	}
 
 	// Save config to disk
@@ -687,78 +834,18 @@ func (s *webServer) handleProviderSummaryModelUpdate(w http.ResponseWriter, r *h
 		return
 	}
 
-	s.logger.Printf("Updated %s summary model to %s", req.Provider, req.Model)
+	s.logger.Printf("Updated %s %s model to %s", req.Provider, req.ModelType, req.Model)
 
-	// Reload config to pick up new summary model
-	if err := s.agent.reloadConfig(s.agent.cfgPath); err != nil {
-		s.logger.Printf("Warning: failed to reload config after summary model change: %v", err)
-		s.writeJSON(w, r, map[string]any{
-			"success": true,
-			"message": "Summary model saved but config reload failed. Please restart Cando.",
-		})
-		return
+	// Reload providers for main model changes
+	if req.ModelType == "main" {
+		if err := s.agent.ReloadProviders(); err != nil {
+			s.logger.Printf("Warning: failed to reload providers after model change: %v", err)
+		}
 	}
 
 	s.writeJSON(w, r, map[string]any{
 		"success": true,
-		"message": fmt.Sprintf("Summary model updated to %s! Change is active now.", req.Model),
-	})
-}
-
-func (s *webServer) handleProviderVisionModelUpdate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var req struct {
-		Provider string `json:"provider"`
-		Model    string `json:"model"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
-		return
-	}
-
-	if req.Provider == "" || req.Model == "" {
-		s.respondError(w, r, http.StatusBadRequest, "provider and model are required")
-		return
-	}
-
-	if s.agent.credManager == nil {
-		s.respondError(w, r, http.StatusInternalServerError, "credential manager not available")
-		return
-	}
-
-	// Load existing credentials
-	creds, err := s.agent.credManager.Load()
-	if err != nil {
-		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to load credentials: %v", err))
-		return
-	}
-
-	// Check if provider exists
-	provider, ok := creds.Providers[req.Provider]
-	if !ok {
-		s.respondError(w, r, http.StatusBadRequest, fmt.Sprintf("provider %s not configured", req.Provider))
-		return
-	}
-
-	// Update vision model while preserving API key
-	provider.VisionModel = req.Model
-	creds.Providers[req.Provider] = provider
-
-	// Save updated credentials
-	if err := s.agent.credManager.Save(creds); err != nil {
-		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to save credentials: %v", err))
-		return
-	}
-
-	s.logger.Printf("Updated %s vision model to %s", req.Provider, req.Model)
-
-	s.writeJSON(w, r, map[string]any{
-		"success": true,
-		"message": fmt.Sprintf("Vision model updated to %s!", req.Model),
+		"message": fmt.Sprintf("%s model updated to %s!", req.ModelType, req.Model),
 	})
 }
 
@@ -825,8 +912,13 @@ type sessionPayload struct {
 	Model                 string            `json:"model"`
 	SummaryModel          string            `json:"summary_model,omitempty"`
 	Providers             []ProviderOption  `json:"providers,omitempty"`
+	ProviderModels        map[string]string `json:"provider_models,omitempty"`
 	ProviderSummaryModels map[string]string `json:"provider_summary_models,omitempty"`
+	ProviderVLModels      map[string]string `json:"provider_vl_models,omitempty"`
 	CurrentProvider       string            `json:"current_provider,omitempty"`
+	OpenRouterFreeMode    bool              `json:"openrouter_free_mode,omitempty"`
+	AnalyticsEnabled      bool              `json:"analytics_enabled"`
+	ContextProfile        string            `json:"context_profile,omitempty"`
 	Plan                  *planSnapshot     `json:"plan,omitempty"`
 	PlanError             string            `json:"plan_error,omitempty"`
 	Workdir               string            `json:"workdir,omitempty"`
@@ -909,10 +1001,14 @@ func (s *webServer) workspaceExists(path string) bool {
 func (s *webServer) writeSessionPayload(w http.ResponseWriter, r *http.Request) {
 	workspace := s.getWorkspaceFromRequest(r)
 	if workspace != "" && !s.workspaceExists(workspace) {
-		s.logger.Printf("[WEB] requested workspace %s not found; returning empty state", workspace)
+		s.logger.Printf("[ws:%s] workspace not found; returning empty state", workspace)
 		workspace = ""
 	}
-	s.agent.logger.Printf("[WEB] writeSessionPayload: workspace=%s", workspace)
+	if workspace != "" {
+		s.agent.logger.Printf("[ws:%s] writeSessionPayload: building session", workspace)
+	} else {
+		s.agent.logger.Printf("writeSessionPayload: no workspace selected")
+	}
 	payload, err := s.buildSessionPayload(r.Context(), workspace)
 	if err != nil {
 		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to build session: %v", err))
@@ -923,17 +1019,31 @@ func (s *webServer) writeSessionPayload(w http.ResponseWriter, r *http.Request) 
 
 func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath string) (sessionPayload, error) {
 	providers, currentProvider := s.getProvidersFromDisk()
+	activeModel := s.agent.getActiveModel()
+
 	payload := sessionPayload{
-		Thinking:              s.agent.thinkingEnabled,
-		ForceThinking:         s.agent.forceThinking,
+		Thinking:              s.agent.cfg.ThinkingEnabled, // Use config value, not agent cache
+		ForceThinking:         s.agent.cfg.ForceThinking,   // Use config value, not agent cache
 		SystemPrompt:          s.agent.cfg.SystemPrompt,
 		Running:               s.agent.HasInFlightRequest(),
 		TotalTokens:           s.agent.getTotalTokens(),
-		Model:                 s.agent.getActiveModel(),
+		Model:                 activeModel,
 		SummaryModel:          s.agent.cfg.SummaryModel,
 		Providers:             providers,
+		ProviderModels:        s.agent.cfg.ProviderModels,
 		ProviderSummaryModels: s.agent.cfg.ProviderSummaryModels,
+		ProviderVLModels:      s.agent.cfg.ProviderVLModels,
 		CurrentProvider:       currentProvider,
+		OpenRouterFreeMode:    s.agent.cfg.OpenRouterFreeMode,
+		AnalyticsEnabled:      s.agent.cfg.IsAnalyticsEnabled(),
+		ContextProfile:        s.agent.cfg.ContextProfile, // Add missing field for profile dropdown
+		Config: &configSnapshot{ // Global config should always be available
+			ContextProfile:             s.agent.cfg.ContextProfile,
+			ContextMessagePercent:      s.agent.cfg.ContextMessagePercent,
+			ContextConversationPercent: s.agent.cfg.ContextTotalPercent,
+			ContextProtectRecent:       s.agent.cfg.ContextProtectRecent,
+			SystemPrompt:               s.agent.cfg.SystemPrompt,
+		},
 	}
 	if s.workspaceManager != nil {
 		payload.Workspaces = s.workspaceManager.List()
@@ -969,13 +1079,6 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 	payload.ContextChars = conversationCharCount(messages)
 	payload.Plan = plan
 	payload.Workdir = wsCtx.root
-	payload.Config = &configSnapshot{
-		ContextProfile:             s.agent.cfg.ContextProfile,
-		ContextMessagePercent:      s.agent.cfg.ContextMessagePercent,
-		ContextConversationPercent: s.agent.cfg.ContextTotalPercent,
-		ContextProtectRecent:       s.agent.cfg.ContextProtectRecent,
-		SystemPrompt:               s.agent.cfg.SystemPrompt,
-	}
 	if planErr != nil {
 		payload.PlanError = planErr.Error()
 	}
@@ -1265,9 +1368,11 @@ func (s *webServer) handleFileSearch(w http.ResponseWriter, r *http.Request) {
 func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var req struct {
-			ContextMessagePercent      float64 `json:"context_message_percent"`
-			ContextConversationPercent float64 `json:"context_conversation_percent"`
-			ContextProtectRecent       int     `json:"context_protect_recent"`
+			ContextMessagePercent      *float64 `json:"context_message_percent"`
+			ContextConversationPercent *float64 `json:"context_conversation_percent"`
+			ContextProtectRecent       *int     `json:"context_protect_recent"`
+			OpenRouterFreeMode         *bool    `json:"openrouter_free_mode"`
+			AnalyticsEnabled           *bool    `json:"analytics_enabled"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1275,24 +1380,39 @@ func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Validate inputs
-		if req.ContextMessagePercent <= 0 || req.ContextMessagePercent > 0.10 {
-			s.respondError(w, r, http.StatusBadRequest, "context_message_percent must be between 0 and 0.10 (0-10%)")
-			return
+		// Validate and update compaction settings if provided
+		if req.ContextMessagePercent != nil {
+			if *req.ContextMessagePercent <= 0 || *req.ContextMessagePercent > 0.10 {
+				s.respondError(w, r, http.StatusBadRequest, "context_message_percent must be between 0 and 0.10 (0-10%)")
+				return
+			}
+			s.agent.cfg.ContextMessagePercent = *req.ContextMessagePercent
 		}
-		if req.ContextConversationPercent <= 0 || req.ContextConversationPercent > 0.80 {
-			s.respondError(w, r, http.StatusBadRequest, "context_conversation_percent must be between 0 and 0.80 (0-80%)")
-			return
+		if req.ContextConversationPercent != nil {
+			if *req.ContextConversationPercent <= 0 || *req.ContextConversationPercent > 0.80 {
+				s.respondError(w, r, http.StatusBadRequest, "context_conversation_percent must be between 0 and 0.80 (0-80%)")
+				return
+			}
+			s.agent.cfg.ContextTotalPercent = *req.ContextConversationPercent
 		}
-		if req.ContextProtectRecent < 0 {
-			s.respondError(w, r, http.StatusBadRequest, "context_protect_recent must be >= 0")
-			return
+		if req.ContextProtectRecent != nil {
+			if *req.ContextProtectRecent < 0 {
+				s.respondError(w, r, http.StatusBadRequest, "context_protect_recent must be >= 0")
+				return
+			}
+			s.agent.cfg.ContextProtectRecent = *req.ContextProtectRecent
 		}
 
-		// Update config
-		s.agent.cfg.ContextMessagePercent = req.ContextMessagePercent
-		s.agent.cfg.ContextTotalPercent = req.ContextConversationPercent
-		s.agent.cfg.ContextProtectRecent = req.ContextProtectRecent
+		// Update OpenRouter Free Mode if provided
+		if req.OpenRouterFreeMode != nil {
+			s.agent.cfg.OpenRouterFreeMode = *req.OpenRouterFreeMode
+		}
+
+		// Update Analytics if provided
+		if req.AnalyticsEnabled != nil {
+			s.agent.cfg.AnalyticsEnabled = req.AnalyticsEnabled
+			analytics.SetEnabled(*req.AnalyticsEnabled)
+		}
 
 		// Save to config file
 		if err := config.Save(s.agent.cfg); err != nil {
@@ -1569,43 +1689,121 @@ func (s *webServer) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Filter to only directories, exclude hidden
+	// Check if we should include files
+	includeFiles := r.URL.Query().Get("includeFiles") == "true"
+
+	// Filter entries
 	type DirEntry struct {
-		Name string `json:"name"`
-		Path string `json:"path"`
+		Name  string `json:"name"`
+		Path  string `json:"path"`
+		IsDir bool   `json:"isDir"`
 	}
 
 	// Initialize as empty slice (not nil) so JSON marshals to [] instead of null
 	dirs := make([]DirEntry, 0)
-	for _, entry := range entries {
-		// Skip non-directories
-		if !entry.IsDir() {
-			continue
-		}
+	files := make([]DirEntry, 0)
 
-		// Skip hidden directories (starting with .)
+	for _, entry := range entries {
+		// Skip hidden entries (starting with .)
 		if strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 
-		dirs = append(dirs, DirEntry{
-			Name: entry.Name(),
-			Path: filepath.Join(absPath, entry.Name()),
-		})
+		fullPath := filepath.Join(absPath, entry.Name())
+
+		if entry.IsDir() {
+			dirs = append(dirs, DirEntry{
+				Name:  entry.Name(),
+				Path:  fullPath,
+				IsDir: true,
+			})
+		} else if includeFiles {
+			files = append(files, DirEntry{
+				Name:  entry.Name(),
+				Path:  fullPath,
+				IsDir: false,
+			})
+		}
 	}
 
 	// Sort alphabetically
 	sort.Slice(dirs, func(i, j int) bool {
 		return dirs[i].Name < dirs[j].Name
 	})
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name < files[j].Name
+	})
 
 	// Get parent directory
 	parentPath := filepath.Dir(absPath)
 
-	s.writeJSON(w, r, map[string]interface{}{
+	response := map[string]interface{}{
 		"current":     absPath,
 		"parent":      parentPath,
 		"directories": dirs,
+	}
+	if includeFiles {
+		response["files"] = files
+	}
+
+	s.writeJSON(w, r, response)
+}
+
+// handleFolderCreate creates a new directory at the specified path
+func (s *webServer) handleFolderCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid request: %v", err))
+		return
+	}
+
+	if req.Path == "" {
+		s.respondError(w, r, http.StatusBadRequest, "path is required")
+		return
+	}
+
+	// Clean and validate path
+	absPath, err := filepath.Abs(req.Path)
+	if err != nil {
+		s.respondError(w, r, http.StatusBadRequest, fmt.Sprintf("invalid path: %v", err))
+		return
+	}
+
+	// Security check: prevent creating folders outside user home or absolute paths with ..
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, "failed to get home directory")
+		return
+	}
+	if !strings.HasPrefix(absPath, homeDir) && !strings.HasPrefix(absPath, "/tmp") {
+		s.respondError(w, r, http.StatusForbidden, "cannot create folders outside home directory")
+		return
+	}
+
+	// Check if path already exists
+	if _, err := os.Stat(absPath); err == nil {
+		s.respondError(w, r, http.StatusConflict, "path already exists")
+		return
+	}
+
+	// Create directory with standard permissions
+	if err := os.MkdirAll(absPath, 0755); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+
+	s.logger.Printf("Created folder: %s", absPath)
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"path":   absPath,
+		"status": "created",
 	})
 }
 
@@ -1708,4 +1906,796 @@ func (s *webServer) handleBranch(w http.ResponseWriter, r *http.Request) {
 		"new_session_key": newKey,
 		"status":          "branched",
 	})
+}
+
+// handleProjectInstructions handles GET/POST for project-level instructions
+func (s *webServer) handleProjectInstructions(w http.ResponseWriter, r *http.Request) {
+	workspacePath := r.Header.Get("X-Workspace")
+	if workspacePath == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace header required")
+		return
+	}
+
+	// Get project storage root
+	storageRoot, err := ProjectStorageRoot(workspacePath)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to get storage root: %v", err))
+		return
+	}
+
+	instructionsPath := filepath.Join(storageRoot, "instructions.txt")
+
+	switch r.Method {
+	case http.MethodGet:
+		// Read instructions file
+		content, err := os.ReadFile(instructionsPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// No instructions file yet, return empty
+				s.writeJSON(w, r, map[string]string{"instructions": ""})
+				return
+			}
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to read instructions: %v", err))
+			return
+		}
+		s.writeJSON(w, r, map[string]string{"instructions": string(content)})
+
+	case http.MethodPost:
+		var req struct {
+			Instructions string `json:"instructions"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		// Ensure storage directory exists
+		if err := os.MkdirAll(storageRoot, 0o755); err != nil {
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create storage dir: %v", err))
+			return
+		}
+
+		// Write instructions file
+		if err := os.WriteFile(instructionsPath, []byte(req.Instructions), 0o644); err != nil {
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to write instructions: %v", err))
+			return
+		}
+
+		s.writeJSON(w, r, map[string]string{"status": "saved"})
+
+	default:
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+// Update-related constants
+const (
+	githubRepoOwner       = "cutoken"
+	githubRepoName        = "cando"
+	updateCheckTimeout    = 10 * time.Second
+	updateDownloadTimeout = 120 * time.Second
+)
+
+func (s *webServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	s.writeJSON(w, r, map[string]string{"status": "ok"})
+}
+
+func (s *webServer) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	currentVersion := s.agent.version
+	forceCheck := r.URL.Query().Get("force") == "true"
+	isDev := currentVersion == "" || currentVersion == "dev"
+
+	// Load update state
+	state, err := config.LoadUpdateState()
+	if err != nil {
+		s.logger.Printf("failed to load update state: %v", err)
+		state = &config.UpdateState{}
+	}
+
+	// Check if dismissed (skip if force check or dev)
+	if !isDev && !forceCheck && state.IsDismissed() {
+		s.writeJSON(w, r, map[string]any{
+			"current":         currentVersion,
+			"latest":          state.LatestVersion,
+			"updateAvailable": false,
+			"dismissed":       true,
+			"isDev":           false,
+		})
+		return
+	}
+
+	// Check if we need to fetch new version info
+	latestVersion := state.LatestVersion
+	if forceCheck || state.NeedsCheck() {
+		if fetched, err := s.fetchLatestVersion(); err != nil {
+			s.logger.Printf("failed to fetch latest version: %v", err)
+		} else {
+			latestVersion = fetched
+			state.RecordCheck(latestVersion)
+			if err := state.Save(); err != nil {
+				s.logger.Printf("failed to save update state: %v", err)
+			}
+		}
+	}
+
+	// Dev versions can see latest but can't update
+	updateAvailable := !isDev && latestVersion != "" && compareVersions(latestVersion, currentVersion) > 0
+
+	s.writeJSON(w, r, map[string]any{
+		"current":         currentVersion,
+		"latest":          latestVersion,
+		"updateAvailable": updateAvailable,
+		"dismissed":       false,
+		"isDev":           isDev,
+	})
+}
+
+func (s *webServer) handleUpdateDismiss(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	state, err := config.LoadUpdateState()
+	if err != nil {
+		state = &config.UpdateState{}
+	}
+
+	state.Dismiss()
+	if err := state.Save(); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to save state: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, map[string]string{"status": "dismissed"})
+}
+
+func (s *webServer) handleTelemetry(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		UserAgent  string `json:"user_agent"`
+		ScreenSize string `json:"screen_size"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	// Update browser context for analytics
+	analytics.SetBrowserContext(req.UserAgent, req.ScreenSize)
+
+	// Track page view now that we have browser context
+	analytics.TrackPageView()
+
+	s.writeJSON(w, r, map[string]string{"status": "ok"})
+}
+
+// FileTreeEntry represents a file or directory in the tree
+type FileTreeEntry struct {
+	Name     string          `json:"name"`
+	Path     string          `json:"path"`
+	IsDir    bool            `json:"isDir"`
+	Children []FileTreeEntry `json:"children,omitempty"`
+}
+
+func (s *webServer) handleFilesTree(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	workspacePath := r.URL.Query().Get("workspace")
+	if workspacePath == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace parameter required")
+		return
+	}
+
+	// Validate workspace path exists
+	info, err := os.Stat(workspacePath)
+	if err != nil || !info.IsDir() {
+		s.respondError(w, r, http.StatusBadRequest, "invalid workspace path")
+		return
+	}
+
+	// Build the file tree (limited depth to avoid huge responses)
+	tree, err := s.buildFileTree(workspacePath, workspacePath, 0, 5)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to read directory: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, tree)
+}
+
+func (s *webServer) buildFileTree(basePath, currentPath string, depth, maxDepth int) ([]FileTreeEntry, error) {
+	if depth >= maxDepth {
+		return []FileTreeEntry{}, nil
+	}
+
+	entries, err := os.ReadDir(currentPath)
+	if err != nil {
+		return nil, err
+	}
+
+	result := []FileTreeEntry{}
+	for _, entry := range entries {
+		name := entry.Name()
+
+		// Skip large/generated directories only
+		if entry.IsDir() {
+			switch name {
+			case "node_modules", "vendor", "__pycache__", ".git", ".svn", ".hg", ".next", ".nuxt", "target", "bin", "obj":
+				continue
+			}
+		}
+
+		fullPath := filepath.Join(currentPath, name)
+		relPath, _ := filepath.Rel(basePath, fullPath)
+
+		item := FileTreeEntry{
+			Name:  name,
+			Path:  relPath,
+			IsDir: entry.IsDir(),
+		}
+
+		if entry.IsDir() {
+			children, err := s.buildFileTree(basePath, fullPath, depth+1, maxDepth)
+			if err == nil {
+				item.Children = children
+			}
+		}
+
+		result = append(result, item)
+	}
+
+	// Sort: directories first, then alphabetically
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].IsDir != result[j].IsDir {
+			return result[i].IsDir
+		}
+		return strings.ToLower(result[i].Name) < strings.ToLower(result[j].Name)
+	})
+
+	return result, nil
+}
+
+func (s *webServer) handleFilesRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	workspacePath := r.URL.Query().Get("workspace")
+	filePath := r.URL.Query().Get("path")
+
+	if workspacePath == "" || filePath == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace and path parameters required")
+		return
+	}
+
+	// Construct full path and validate it's within workspace
+	fullPath := filepath.Join(workspacePath, filePath)
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(workspacePath)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check file exists and is not a directory
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		s.respondError(w, r, http.StatusNotFound, "file not found")
+		return
+	}
+	if info.IsDir() {
+		s.respondError(w, r, http.StatusBadRequest, "cannot read directory")
+		return
+	}
+
+	// Check file size (limit to 1MB)
+	if info.Size() > 1024*1024 {
+		s.respondError(w, r, http.StatusBadRequest, "file too large (max 1MB)")
+		return
+	}
+
+	// Read file content
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to read file: %v", err))
+		return
+	}
+
+	// Detect if binary
+	isBinary := false
+	for _, b := range content[:min(512, len(content))] {
+		if b == 0 {
+			isBinary = true
+			break
+		}
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"path":     filePath,
+		"content":  string(content),
+		"isBinary": isBinary,
+		"size":     info.Size(),
+		"modTime":  info.ModTime().Unix(),
+	})
+}
+
+func (s *webServer) handleFilesSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		Path      string `json:"path"`
+		Content   string `json:"content"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" || req.Path == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace and path required")
+		return
+	}
+
+	// Construct full path and validate it's within workspace
+	fullPath := filepath.Join(req.Workspace, req.Path)
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(req.Workspace)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(fullPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+
+	// Write file
+	if err := os.WriteFile(fullPath, []byte(req.Content), 0644); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to write file: %v", err))
+		return
+	}
+
+	// Get updated file info
+	info, _ := os.Stat(fullPath)
+	modTime := int64(0)
+	if info != nil {
+		modTime = info.ModTime().Unix()
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status":  "saved",
+		"path":    req.Path,
+		"modTime": modTime,
+	})
+}
+
+func (s *webServer) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		Path      string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" || req.Path == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace and path required")
+		return
+	}
+
+	fullPath := filepath.Join(req.Workspace, req.Path)
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(req.Workspace)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check if file already exists
+	if _, err := os.Stat(fullPath); err == nil {
+		s.respondError(w, r, http.StatusConflict, "file already exists")
+		return
+	}
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(fullPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+
+	// Create empty file
+	if err := os.WriteFile(fullPath, []byte{}, 0644); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create file: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status": "created",
+		"path":   req.Path,
+	})
+}
+
+func (s *webServer) handleFilesMkdir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		Path      string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" || req.Path == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace and path required")
+		return
+	}
+
+	fullPath := filepath.Join(req.Workspace, req.Path)
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(req.Workspace)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check if directory already exists
+	if info, err := os.Stat(fullPath); err == nil && info.IsDir() {
+		s.respondError(w, r, http.StatusConflict, "directory already exists")
+		return
+	}
+
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status": "created",
+		"path":   req.Path,
+	})
+}
+
+func (s *webServer) handleFilesReveal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		Path      string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace required")
+		return
+	}
+
+	// If path is empty, reveal the workspace folder itself
+	fullPath := req.Workspace
+	if req.Path != "" {
+		fullPath = filepath.Join(req.Workspace, req.Path)
+	}
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(req.Workspace)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check if path exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		s.respondError(w, r, http.StatusNotFound, "path not found")
+		return
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", "-R", fullPath)
+	case "windows":
+		cmd = exec.Command("explorer", "/select,", fullPath)
+	default: // linux and others
+		// xdg-open opens the parent directory for files
+		cmd = exec.Command("xdg-open", filepath.Dir(fullPath))
+	}
+
+	if err := cmd.Start(); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to open explorer: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status": "opened",
+		"path":   req.Path,
+	})
+}
+
+func (s *webServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	currentVersion := s.agent.version
+	if currentVersion == "" || currentVersion == "dev" {
+		s.respondError(w, r, http.StatusBadRequest, "cannot update dev version")
+		return
+	}
+
+	// Get current binary path
+	binaryPath, err := os.Executable()
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to get executable path: %v", err))
+		return
+	}
+	binaryPath, err = filepath.EvalSymlinks(binaryPath)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to resolve symlinks: %v", err))
+		return
+	}
+
+	// Check if writable
+	if err := checkWritable(binaryPath); err != nil {
+		s.writeJSON(w, r, map[string]any{
+			"success":     false,
+			"needsManual": true,
+			"command":     "curl -fsSL https://raw.githubusercontent.com/" + githubRepoOwner + "/" + githubRepoName + "/main/install.sh | bash",
+			"message":     fmt.Sprintf("Binary not writable: %v", err),
+		})
+		return
+	}
+
+	// Download new binary
+	s.logger.Printf("downloading update...")
+	if err := s.downloadAndReplaceBinary(binaryPath); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("update failed: %v", err))
+		return
+	}
+
+	s.logger.Printf("update downloaded successfully")
+	s.writeJSON(w, r, map[string]any{
+		"success": true,
+		"message": "Update downloaded. Click Restart to apply.",
+	})
+}
+
+func (s *webServer) handleRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	s.triggerRestart(w, r)
+}
+
+func (s *webServer) triggerRestart(w http.ResponseWriter, r *http.Request) {
+	// Send response before restarting
+	s.writeJSON(w, r, map[string]string{"status": "restarting"})
+
+	// Give time for response to be sent, then exec directly
+	// We do exec BEFORE shutdown to avoid race with main() exiting
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+
+		// Print to stdout so user sees it in terminal
+		fmt.Println("\n🔄 Restarting Cando...")
+		s.logger.Printf("restarting application...")
+
+		// Exec new binary - this replaces the process immediately
+		binary, err := os.Executable()
+		if err != nil {
+			fmt.Printf("❌ Failed to get executable: %v\n", err)
+			s.logger.Printf("failed to get executable: %v", err)
+			os.Exit(1)
+		}
+
+		s.logger.Printf("exec: %s %v", binary, os.Args)
+
+		// syscall.Exec replaces current process, no need for graceful shutdown
+		// The OS will clean up the listening socket
+		if err := execBinary(binary, os.Args, os.Environ()); err != nil {
+			fmt.Printf("❌ Failed to restart: %v\n", err)
+			s.logger.Printf("failed to exec: %v", err)
+			os.Exit(1)
+		}
+	}()
+}
+
+func (s *webServer) fetchLatestVersion() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
+	defer cancel()
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubRepoOwner, githubRepoName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("github API returned %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", err
+	}
+
+	return release.TagName, nil
+}
+
+func (s *webServer) downloadAndReplaceBinary(binaryPath string) error {
+	// Detect platform
+	platform := fmt.Sprintf("%s-%s", getOS(), getArch())
+
+	// Construct download URL
+	state, _ := config.LoadUpdateState()
+	version := state.LatestVersion
+	if version == "" {
+		return fmt.Errorf("no version to download")
+	}
+
+	var downloadURL string
+	if strings.Contains(platform, "windows") {
+		downloadURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/cando-%s.exe",
+			githubRepoOwner, githubRepoName, version, platform)
+	} else {
+		downloadURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/cando-%s-bin",
+			githubRepoOwner, githubRepoName, version, platform)
+	}
+
+	s.logger.Printf("downloading from: %s", downloadURL)
+
+	// Download to temp file
+	ctx, cancel := context.WithTimeout(context.Background(), updateDownloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	}
+
+	// Create temp file in same directory (for atomic rename)
+	dir := filepath.Dir(binaryPath)
+	tmpFile, err := os.CreateTemp(dir, "cando-update-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath) // Clean up on error
+
+	// Copy download to temp file
+	_, err = io.Copy(tmpFile, resp.Body)
+	tmpFile.Close()
+	if err != nil {
+		return fmt.Errorf("failed to download: %w", err)
+	}
+
+	// Make executable
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		return fmt.Errorf("failed to chmod: %w", err)
+	}
+
+	// Atomic replace: backup old, rename new
+	backupPath := binaryPath + ".backup"
+	_ = os.Remove(backupPath) // Remove old backup if exists
+
+	if err := os.Rename(binaryPath, backupPath); err != nil {
+		return fmt.Errorf("failed to backup: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, binaryPath); err != nil {
+		// Try to restore backup
+		_ = os.Rename(backupPath, binaryPath)
+		return fmt.Errorf("failed to replace binary: %w", err)
+	}
+
+	s.logger.Printf("binary replaced successfully")
+	return nil
+}
+
+func checkWritable(path string) error {
+	file, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	file.Close()
+	return nil
+}
+
+func compareVersions(v1, v2 string) int {
+	// Strip 'v' prefix
+	v1 = strings.TrimPrefix(v1, "v")
+	v2 = strings.TrimPrefix(v2, "v")
+
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	for i := 0; i < len(parts1) && i < len(parts2); i++ {
+		n1, _ := strconv.Atoi(parts1[i])
+		n2, _ := strconv.Atoi(parts2[i])
+		if n1 > n2 {
+			return 1
+		}
+		if n1 < n2 {
+			return -1
+		}
+	}
+
+	if len(parts1) > len(parts2) {
+		return 1
+	}
+	if len(parts1) < len(parts2) {
+		return -1
+	}
+	return 0
+}
+
+func getOS() string {
+	return runtime.GOOS
+}
+
+func getArch() string {
+	return runtime.GOARCH
 }

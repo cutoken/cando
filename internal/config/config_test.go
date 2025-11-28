@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -114,5 +116,332 @@ func TestDefaultCompactionPromptConsistency(t *testing.T) {
 	// Verify the constant value
 	if DefaultCompactionPrompt != "Summarize the following text in 20 words or fewer. Return only the summary." {
 		t.Errorf("DefaultCompactionPrompt changed unexpectedly: %q", DefaultCompactionPrompt)
+	}
+}
+
+func TestNewUserDefaultsByProvider(t *testing.T) {
+	tests := []struct {
+		name            string
+		provider        string
+		expectedModel   string
+		expectedSummary string
+		expectedVL      string
+	}{
+		{
+			name:            "ZAI provider gets correct defaults",
+			provider:        "zai",
+			expectedModel:   ProviderDefaults["zai"].Main,
+			expectedSummary: ProviderDefaults["zai"].Summary,
+			expectedVL:      ProviderDefaults["zai"].VL,
+		},
+		{
+			name:            "OpenRouter provider gets correct defaults",
+			provider:        "openrouter",
+			expectedModel:   ProviderDefaults["openrouter"].Main,
+			expectedSummary: ProviderDefaults["openrouter"].Summary,
+			expectedVL:      ProviderDefaults["openrouter"].VL,
+		},
+		{
+			name:            "Mock provider gets mock defaults",
+			provider:        "mock",
+			expectedModel:   ProviderDefaults["mock"].Main,
+			expectedSummary: ProviderDefaults["mock"].Summary,
+			expectedVL:      ProviderDefaults["mock"].VL,
+		},
+		{
+			name:            "Unknown provider gets OpenRouter defaults",
+			provider:        "unknown",
+			expectedModel:   ProviderDefaults["openrouter"].Main,
+			expectedSummary: ProviderDefaults["openrouter"].Summary,
+			expectedVL:      ProviderDefaults["openrouter"].VL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a temporary directory for test config
+			tempDir := t.TempDir()
+			configDir := filepath.Join(tempDir, ".cando")
+			configPath := filepath.Join(configDir, "config.yaml")
+
+			// Override the home directory for this test
+			originalHome := os.Getenv("HOME")
+			t.Cleanup(func() {
+				os.Setenv("HOME", originalHome)
+			})
+			os.Setenv("HOME", tempDir)
+
+			// Ensure config doesn't exist initially
+			if _, err := os.Stat(configPath); err == nil {
+				t.Fatalf("Config file should not exist before test: %s", configPath)
+			}
+
+			// Run EnsureDefaultConfig
+			err := EnsureDefaultConfig(tt.provider)
+			if err != nil {
+				t.Fatalf("EnsureDefaultConfig failed: %v", err)
+			}
+
+			// Verify config was created
+			if _, err := os.Stat(configPath); os.IsNotExist(err) {
+				t.Fatalf("Config file was not created: %s", configPath)
+			}
+
+			// Load and verify the config
+			cfg, err := LoadUserConfig()
+			if err != nil {
+				t.Fatalf("LoadUserConfig failed: %v", err)
+			}
+
+			// Check main model
+			if cfg.Model != tt.expectedModel {
+				t.Errorf("Expected Model %q, got %q", tt.expectedModel, cfg.Model)
+			}
+
+			// Check provider-specific model
+			if len(cfg.ProviderModels) > 0 && cfg.ProviderModels[tt.provider] != tt.expectedModel {
+				t.Errorf("Expected ProviderModels[%s] %q, got %q", tt.provider, tt.expectedModel, cfg.ProviderModels[tt.provider])
+			}
+
+			// Check summary model if expected
+			if tt.expectedSummary != "" {
+				if cfg.SummaryModel != tt.expectedSummary {
+					t.Errorf("Expected SummaryModel %q, got %q", tt.expectedSummary, cfg.SummaryModel)
+				}
+			}
+
+			// Check VL model if expected
+			if tt.expectedVL != "" {
+				if cfg.VLModel != tt.expectedVL {
+					t.Errorf("Expected VLModel %q, got %q", tt.expectedVL, cfg.VLModel)
+				}
+				// Also check provider-specific VL model
+				if len(cfg.ProviderVLModels) > 0 && cfg.ProviderVLModels[tt.provider] != tt.expectedVL {
+					t.Errorf("Expected ProviderVLModels[%s] %q, got %q", tt.provider, tt.expectedVL, cfg.ProviderVLModels[tt.provider])
+				}
+			}
+		})
+	}
+}
+
+func TestModelForProviderFallbacks(t *testing.T) {
+	tests := []struct {
+		name          string
+		provider      string
+		setupConfig   func(*Config)
+		expectedModel string
+	}{
+		{
+			name:     "ZAI gets provider-specific model when configured",
+			provider: "zai",
+			setupConfig: func(c *Config) {
+				c.ProviderModels = map[string]string{"zai": "custom-zai-model"}
+			},
+			expectedModel: "custom-zai-model",
+		},
+		{
+			name:     "ZAI falls back to default when not configured",
+			provider: "zai",
+			setupConfig: func(c *Config) {
+				c.ProviderModels = map[string]string{} // Empty
+			},
+			expectedModel: ProviderDefaults["zai"].Main,
+		},
+		{
+			name:     "OpenRouter gets provider-specific model when configured",
+			provider: "openrouter",
+			setupConfig: func(c *Config) {
+				c.ProviderModels = map[string]string{"openrouter": "custom-openrouter-model"}
+			},
+			expectedModel: "custom-openrouter-model",
+		},
+		{
+			name:     "OpenRouter falls back to default when not configured",
+			provider: "openrouter",
+			setupConfig: func(c *Config) {
+				c.ProviderModels = map[string]string{} // Empty
+			},
+			expectedModel: ProviderDefaults["openrouter"].Main,
+		},
+		{
+			name:     "Mock gets default model",
+			provider: "mock",
+			setupConfig: func(c *Config) {
+				c.ProviderModels = map[string]string{} // Empty
+			},
+			expectedModel: ProviderDefaults["mock"].Main,
+		},
+		{
+			name:     "Unknown provider falls back to generic model",
+			provider: "unknown",
+			setupConfig: func(c *Config) {
+				c.ProviderModels = map[string]string{} // Empty
+				c.Model = "generic-model"
+			},
+			expectedModel: "generic-model",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{}
+			tt.setupConfig(cfg)
+
+			result := cfg.ModelFor(tt.provider)
+			if result != tt.expectedModel {
+				t.Errorf("Expected ModelFor(%s) %q, got %q", tt.provider, tt.expectedModel, result)
+			}
+		})
+	}
+}
+
+func TestSummaryModelForProviderFallbacks(t *testing.T) {
+	tests := []struct {
+		name                 string
+		provider             string
+		setupConfig          func(*Config)
+		expectedSummaryModel string
+	}{
+		{
+			name:     "ZAI gets provider-specific summary model when configured",
+			provider: "zai",
+			setupConfig: func(c *Config) {
+				c.ProviderSummaryModels = map[string]string{"zai": "custom-zai-summary"}
+			},
+			expectedSummaryModel: "custom-zai-summary",
+		},
+		{
+			name:     "ZAI falls back to default summary when not configured",
+			provider: "zai",
+			setupConfig: func(c *Config) {
+				c.ProviderSummaryModels = map[string]string{} // Empty
+			},
+			expectedSummaryModel: ProviderDefaults["zai"].Summary,
+		},
+		{
+			name:     "OpenRouter gets provider-specific summary model when configured",
+			provider: "openrouter",
+			setupConfig: func(c *Config) {
+				c.ProviderSummaryModels = map[string]string{"openrouter": "custom-openrouter-summary"}
+			},
+			expectedSummaryModel: "custom-openrouter-summary",
+		},
+		{
+			name:     "OpenRouter falls back to default summary when not configured",
+			provider: "openrouter",
+			setupConfig: func(c *Config) {
+				c.ProviderSummaryModels = map[string]string{} // Empty
+			},
+			expectedSummaryModel: ProviderDefaults["openrouter"].Summary,
+		},
+		{
+			name:     "Mock gets default summary model",
+			provider: "mock",
+			setupConfig: func(c *Config) {
+				c.ProviderSummaryModels = map[string]string{} // Empty
+			},
+			expectedSummaryModel: ProviderDefaults["mock"].Summary,
+		},
+		{
+			name:     "Unknown provider falls back to generic summary model",
+			provider: "unknown",
+			setupConfig: func(c *Config) {
+				c.ProviderSummaryModels = map[string]string{} // Empty
+				c.SummaryModel = "generic-summary-model"
+			},
+			expectedSummaryModel: "generic-summary-model",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{}
+			tt.setupConfig(cfg)
+
+			result := cfg.SummaryModelFor(tt.provider)
+			if result != tt.expectedSummaryModel {
+				t.Errorf("Expected SummaryModelFor(%s) %q, got %q", tt.provider, tt.expectedSummaryModel, result)
+			}
+		})
+	}
+}
+
+func TestVLModelForProviderFallbacks(t *testing.T) {
+	tests := []struct {
+		name            string
+		provider        string
+		setupConfig     func(*Config)
+		expectedVLModel string
+	}{
+		{
+			name:     "ZAI gets provider-specific VL model when configured",
+			provider: "zai",
+			setupConfig: func(c *Config) {
+				c.ProviderVLModels = map[string]string{"zai": "custom-zai-vl"}
+			},
+			expectedVLModel: "custom-zai-vl",
+		},
+		{
+			name:     "OpenRouter gets provider-specific VL model when configured",
+			provider: "openrouter",
+			setupConfig: func(c *Config) {
+				c.ProviderVLModels = map[string]string{"openrouter": "custom-openrouter-vl"}
+			},
+			expectedVLModel: "custom-openrouter-vl",
+		},
+		{
+			name:     "ZAI falls back to default VL when not configured",
+			provider: "zai",
+			setupConfig: func(c *Config) {
+				c.ProviderVLModels = map[string]string{} // Empty
+			},
+			expectedVLModel: ProviderDefaults["zai"].VL,
+		},
+		{
+			name:     "OpenRouter falls back to default VL when not configured",
+			provider: "openrouter",
+			setupConfig: func(c *Config) {
+				c.ProviderVLModels = map[string]string{} // Empty
+			},
+			expectedVLModel: ProviderDefaults["openrouter"].VL,
+		},
+		{
+			name:     "Mock gets default VL model",
+			provider: "mock",
+			setupConfig: func(c *Config) {
+				c.ProviderVLModels = map[string]string{}
+			},
+			expectedVLModel: ProviderDefaults["mock"].VL,
+		},
+		{
+			name:     "Unknown provider falls back to generic VL model",
+			provider: "unknown",
+			setupConfig: func(c *Config) {
+				c.ProviderVLModels = map[string]string{}
+				c.VLModel = "generic-vl-model"
+			},
+			expectedVLModel: "generic-vl-model",
+		},
+		{
+			name:     "Unknown provider falls back to OpenRouter VL when no generic model",
+			provider: "unknown",
+			setupConfig: func(c *Config) {
+				c.ProviderVLModels = map[string]string{}
+				// No generic VL model set
+			},
+			expectedVLModel: ProviderDefaults["openrouter"].VL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{}
+			tt.setupConfig(cfg)
+
+			result := cfg.VLModelFor(tt.provider)
+			if result != tt.expectedVLModel {
+				t.Errorf("Expected VLModelFor(%s) %q, got %q", tt.provider, tt.expectedVLModel, result)
+			}
+		})
 	}
 }

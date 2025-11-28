@@ -13,16 +13,19 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 	"unicode"
 
 	"cando/internal/agent"
+	"cando/internal/analytics"
 	"cando/internal/config"
 	"cando/internal/contextprofile"
 	"cando/internal/credentials"
 	"cando/internal/llm"
+	"cando/internal/logging"
 	mockclient "cando/internal/llm/mockclient"
 	"cando/internal/openrouter"
 	"cando/internal/prompts"
@@ -77,10 +80,13 @@ func main() {
 	}
 
 	// Ensure config exists with provider-appropriate defaults
-	if creds.HasAnyProvider() {
-		if err := config.EnsureDefaultConfig(creds.DefaultProvider); err != nil {
-			log.Fatalf("Failed to ensure default config: %v", err)
-		}
+	// Always create config, even without credentials, to ensure proper defaults
+	provider := creds.DefaultProvider
+	if provider == "" {
+		provider = "openrouter" // Default for new users
+	}
+	if err := config.EnsureDefaultConfig(provider); err != nil {
+		log.Fatalf("Failed to ensure default config: %v", err)
 	}
 
 	// Load user configuration
@@ -89,14 +95,39 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Initialize analytics (respects user preference, default on)
+	analytics.SetEnabled(cfg.IsAnalyticsEnabled())
+	analytics.TrackAppStart(Version)
+
 	// Override workspace if specified
 	if sandbox := strings.TrimSpace(*sandboxPath); sandbox != "" {
 		cfg.OverrideWorkspaceRoot(sandbox)
 	}
 
+	// Set up logging in config root (not per-workspace)
+	configDir := config.GetConfigDir()
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		log.Fatalf("Failed to create config directory: %v", err)
+	}
+	logPath := filepath.Join(configDir, "cando.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer logFile.Close()
+	logger := log.New(logFile, "cando ", log.LstdFlags|log.Lmicroseconds)
+	
+	// Set the logging package's logger to use the file instead of stdout
+	logging.Logger = logger
+
 	// Determine provider from credentials (may be empty for first-run)
 	activeProvider := strings.ToLower(creds.DefaultProvider)
 	hasCredentials := creds.HasAnyProvider()
+
+	// Track which provider is being used
+	if hasCredentials && activeProvider != "" {
+		analytics.TrackProvider(activeProvider)
+	}
 
 	// Set up workspace
 	root := cfg.WorkspaceRoot
@@ -124,15 +155,6 @@ func main() {
 	cfg.HistoryPath = filepath.Join(dataRoot, ".history")
 
 	prompts.SetMetadata(buildEnvironmentMetadata(absRoot))
-
-	// Set up logging
-	logPath := filepath.Join(dataRoot, "cando.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		log.Fatalf("Failed to open log file: %v", err)
-	}
-	defer logFile.Close()
-	logger := log.New(logFile, "cando ", log.LstdFlags|log.Lmicroseconds)
 
 	// Build provider registrations using credentials or mock client for tests
 	var client llm.Client
@@ -203,13 +225,15 @@ func main() {
 
 	// Set up tools
 	toolOpts := tooling.Options{
-		WorkspaceRoot: absRoot,
-		ShellTimeout:  cfg.ShellTimeout(),
-		PlanPath:      filepath.Join(dataRoot, "plan.json"),
-		BinDir:        globalBinDir(),
-		ExternalData:  true,
-		ProcessDir:    filepath.Join(dataRoot, "processes"),
-		CredManager:   credManager,
+		WorkspaceRoot:       absRoot,
+		ShellTimeout:        cfg.ShellTimeout(),
+		PlanPath:            filepath.Join(dataRoot, "plan.json"),
+		BinDir:              globalBinDir(),
+		ExternalData:        true,
+		ProcessDir:          filepath.Join(dataRoot, "processes"),
+		CredManager:         credManager,
+		ZAIVisionURL:        cfg.ZAIVisionURL,
+		OpenRouterVisionURL: cfg.OpenRouterVisionURL,
 	}
 	baseTools := tooling.DefaultTools(toolOpts)
 
@@ -256,6 +280,7 @@ func main() {
 		ProviderBuilders: providerBuilders,
 		ActiveProvider:   activeProvider,
 		ProfileModel:     profileModel,
+		Version:          Version,
 	}, toolOpts)
 
 	// Handle one-shot prompt mode
@@ -280,6 +305,13 @@ func main() {
 
 	// Determine port
 	listenPort := 3737
+	if portEnv := os.Getenv("CANDO_PORT"); portEnv != "" {
+		if port, err := strconv.Atoi(portEnv); err == nil && port > 0 {
+			listenPort = port
+		}
+	} else if os.Getenv("DEV_MODE") == "true" {
+		listenPort = 4000
+	}
 	if *port > 0 {
 		listenPort = *port
 	}
@@ -321,12 +353,8 @@ func findAvailablePort(startPort int) string {
 }
 
 func projectStorageRoot(workspace string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
 	slug := projectSlug(workspace)
-	return filepath.Join(home, ".cando", "projects", slug), nil
+	return filepath.Join(config.GetConfigDir(), "projects", slug), nil
 }
 
 func projectSlug(path string) string {
@@ -428,7 +456,7 @@ func buildZAIRegistration(cfg config.Config, apiKey string, logger *log.Logger) 
 	}
 	base := cfg.ZAIBaseURL
 	if base == "" {
-		base = "https://api.z.ai/api"
+		return nil, fmt.Errorf("Z.AI base URL not configured in config")
 	}
 	client := zai.NewClient(base, apiKey, cfg.RequestTimeout(), logger)
 	model := cfg.ModelFor("zai")
@@ -448,9 +476,9 @@ func buildOpenRouterRegistration(cfg config.Config, apiKey string, logger *log.L
 	if apiKey == "" {
 		return nil, fmt.Errorf("OpenRouter API key not configured")
 	}
-	endpoint := cfg.BaseURL
+	endpoint := cfg.OpenRouterBaseURL
 	if endpoint == "" {
-		endpoint = "https://openrouter.ai/api/v1"
+		return nil, fmt.Errorf("OpenRouter base URL not configured in config")
 	}
 	client := openrouter.NewClient(endpoint, apiKey, cfg.RequestTimeout(), logger)
 	model := cfg.ModelFor("openrouter")

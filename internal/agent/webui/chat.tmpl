@@ -1,76 +1,55 @@
 {{define "chat"}}
 <main class="conversation-panel">
-  <!-- Message Toolbar -->
-  <div class="message-toolbar">
-    <button id="sessionPickerBtn" class="session-picker-btn" title="Session Management">
-      <i data-lucide="list"></i>
-      <span id="currentSessionLabel" class="session-label">Session</span>
-      <i data-lucide="chevron-down" class="chevron"></i>
-    </button>
-    <div id="messageBanner" class="feed-banner hidden"></div>
-  </div>
+  <!-- Split Pane Container -->
+  <div id="splitPaneContainer" class="split-pane-container">
+    <!-- Editor Pane (left) -->
+    <div id="editorPane" class="pane editor-pane hidden">
+      <button id="collapseEditorBtn" class="pane-icon-btn editor-collapse-btn" title="Collapse Editor">
+        <i data-lucide="panel-left-close"></i>
+      </button>
+      <div id="editorContainer" class="editor-container"></div>
+    </div>
 
-  <section id="messages" class="message-feed"></section>
+    <!-- Pane Resize Handle -->
+    <div id="paneResizeHandle" class="pane-resize-handle hidden"></div>
 
-  <div id="thinkingIndicator" class="thinking-indicator">
-    <div class="thinking-content">
-      <div class="workspace-status-container">
-        <button type="button" id="workspaceBtn" class="workspace-status-btn" title="Switch Workspace">
-          <span id="workspaceLabel" class="workspace-status-label"></span>
-          <i data-lucide="chevron-up"></i>
-        </button>
-        <!-- Workspace Dropdown Menu -->
-        <div id="workspaceMenu" class="workspace-dropdown-menu hidden">
-          <div class="workspace-menu-section">
-            <div class="workspace-menu-header">Open Workspaces</div>
-            <div id="workspaceMenuOpen" class="workspace-menu-items"></div>
+    <!-- Chat Pane (right) -->
+    <div id="chatPane" class="pane chat-pane">
+      <button id="expandEditorBtn" class="pane-icon-btn chat-expand-btn hidden" title="Show Editor">
+        <i data-lucide="panel-left-open"></i>
+      </button>
+      <button id="collapseChatBtn" class="pane-icon-btn chat-collapse-btn" title="Collapse Chat">
+        <i data-lucide="panel-right-close"></i>
+      </button>
+      <section id="messages" class="message-feed"></section>
+      <div id="thinkingIndicator" class="thinking-indicator">
+        <div class="thinking-content">
+          <span class="thinking-label">Cando</span>
+          <div class="thinking-dots">
+            <span></span><span></span><span></span>
           </div>
-          <div class="workspace-menu-section">
-            <div class="workspace-menu-header">Recent</div>
-            <div id="workspaceMenuRecent" class="workspace-menu-items"></div>
+          <span class="thinking-status" id="thinkingStatus"></span>
+          <div class="thinking-plan" id="thinkingPlan">
+            <span class="plan-summary-text" id="planSummaryText"></span>
+            <div id="planDropdown" class="plan-dropdown hidden">
+              <div class="plan-dropdown-header">
+                <span id="planDropdownTitle">Plan</span>
+                <button id="closePlanDropdown" class="icon-btn-sm">
+                  <i data-lucide="x"></i>
+                </button>
+              </div>
+              <div id="planDropdownSteps" class="plan-steps-list"></div>
+            </div>
           </div>
-          <div class="workspace-menu-section">
-            <button id="addWorkspaceMenuBtn" class="workspace-menu-add">
-              <i data-lucide="folder-plus"></i>
-              <span>Open Folder</span>
-            </button>
-          </div>
+          <span class="thinking-model-info" id="thinkingModelInfo"></span>
         </div>
       </div>
-      <span class="thinking-label">Cando</span>
-      <div class="thinking-dots">
-        <span></span><span></span><span></span>
-      </div>
-      <span class="thinking-status" id="thinkingStatus"></span>
-      <div class="thinking-plan" id="thinkingPlan">
-        <span class="plan-summary-text" id="planSummaryText"></span>
-        <!-- Plan Dropdown -->
-        <div id="planDropdown" class="plan-dropdown hidden">
-          <div class="plan-dropdown-header">
-            <span id="planDropdownTitle">Plan</span>
-            <button id="closePlanDropdown" class="icon-btn-sm">
-              <i data-lucide="x"></i>
-            </button>
-          </div>
-          <div id="planDropdownSteps" class="plan-steps-list"></div>
-        </div>
-      </div>
-      <span class="thinking-model-info" id="thinkingModelInfo"></span>
     </div>
   </div>
 
-  <form id="promptForm" class="composer">
-    <div class="input-wrapper">
-      <button type="button" id="helpBtn" class="icon-btn help-btn" title="Help">
-        <i data-lucide="help-circle"></i>
-      </button>
-      <button type="button" id="settingsBtn" class="icon-btn settings-btn" title="Settings">
-        <i data-lucide="settings"></i>
-      </button>
-      <textarea id="promptInput" placeholder="Ask Cando anything… (Enter to send, Shift+Enter for new line)" rows="1"></textarea>
-      <button type="button" id="cancelBtn" class="ghost stop-btn">Cancel</button>
-      <button type="submit" id="sendBtn" class="primary send-btn">Send</button>
-    </div>
-  </form>
+  <!-- Expand Chat Button (shown when chat collapsed) -->
+  <button id="expandChatBtn" class="expand-chat-btn hidden" title="Show Chat">
+    <i data-lucide="message-circle"></i>
+  </button>
 </main>
 {{end}}

@@ -7,16 +7,16 @@ BUILD_DIR := dist
 
 all: clean build-linux build-darwin build-windows
 
-# Fetch OpenRouter models at build time
+# Fetch OpenRouter models at build time (sorted by weekly popularity)
 fetch-openrouter-models:
-	@echo "Fetching OpenRouter models..."
-	@curl -s 'https://openrouter.ai/api/frontend/models' | jq '[.data[] | select(.has_text_output == true) | {id: .slug, name: .name, capabilities: .input_modalities, pricing: {prompt: .endpoint.pricing.prompt, completion: .endpoint.pricing.completion}}] | sort_by(.name)' > internal/agent/webui/openrouter-models.json
+	@echo "Fetching OpenRouter models (sorted by popularity)..."
+	@curl -s 'https://openrouter.ai/api/frontend/models/find?order=top-weekly' | jq '[.data.models[] | select(.has_text_output == true) | {id: .endpoint.model_variant_slug, name: .name, capabilities: .input_modalities, pricing: {prompt: .endpoint.pricing.prompt, completion: .endpoint.pricing.completion}}]' > internal/agent/webui/openrouter-models.json
 	@echo "OpenRouter models updated ($(shell jq length internal/agent/webui/openrouter-models.json) models)"
 
 # Generate model context lengths JSON
 fetch-model-contexts:
 	@echo "Generating model contexts..."
-	@curl -s 'https://openrouter.ai/api/frontend/models' | jq '[.data[] | select(.has_text_output == true) | {"key": ("openrouter/" + .slug), "value": .context_length}] | map({(.key): .value}) | add' > /tmp/or-contexts.json
+	@curl -s 'https://openrouter.ai/api/frontend/models/find?order=top-weekly' | jq '[.data.models[] | select(.has_text_output == true) | {"key": ("openrouter/" + .endpoint.model_variant_slug), "value": .context_length}] | map({(.key): .value}) | add' > /tmp/or-contexts.json
 	@echo '{"zai/glm-4.6": 200000, "zai/glm-4.5": 128000, "zai/glm-4.5-air": 128000}' | jq '.' > /tmp/zai-contexts.json
 	@jq -s '.[0] * .[1]' /tmp/or-contexts.json /tmp/zai-contexts.json > internal/config/model-contexts.json
 	@rm -f /tmp/or-contexts.json /tmp/zai-contexts.json

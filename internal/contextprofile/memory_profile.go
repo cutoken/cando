@@ -158,15 +158,7 @@ func newMemoryProfile(deps Dependencies) (*memoryProfile, error) {
 	}
 
 	// Get provider-specific summary model
-	summaryModel := deps.Config.SummaryModel
-	if deps.Config.ProviderSummaryModels != nil {
-		if providerSummary, ok := deps.Config.ProviderSummaryModels[provider]; ok && providerSummary != "" {
-			summaryModel = providerSummary
-		}
-	}
-	if summaryModel == "" {
-		summaryModel = "glm-4.5-air" // fallback default
-	}
+	summaryModel := deps.Config.SummaryModelFor(provider)
 
 	// Calculate absolute thresholds from percentages
 	messageLimit := deps.Config.CalculateMessageThreshold(provider, model)
@@ -457,14 +449,14 @@ func (p *memoryProfile) compactOverflow(ctx context.Context, messages []state.Me
 		protectedStartIdx = 0
 	}
 
-	// DEBUG: Log compaction parameters
-	p.logger.Printf("DEBUG compaction: totalMessages=%d, protect=%d, protectedStartIdx=%d", len(messages), protect, protectedStartIdx)
+	// Log compaction parameters
+	p.logger.Printf("compaction: totalMessages=%d, protect=%d, protectedStartIdx=%d", len(messages), protect, protectedStartIdx)
 
 	// Identify turns in the conversation
 	turns := identifyTurns(messages)
 
-	// DEBUG: Log turns identified
-	p.logger.Printf("DEBUG compaction: identified %d turns", len(turns))
+	// Log turns identified
+	p.logger.Printf("compaction: identified %d turns", len(turns))
 	for i, turn := range turns {
 		p.logger.Printf("  turn[%d]: startIdx=%d, endIdx=%d", i, turn.startIdx, turn.endIdx)
 	}
@@ -477,8 +469,8 @@ func (p *memoryProfile) compactOverflow(ctx context.Context, messages []state.Me
 		}
 	}
 
-	// DEBUG: Log compactable turns
-	p.logger.Printf("DEBUG compaction: %d turns are compactable (endIdx < %d)", len(compactableTurns), protectedStartIdx)
+	// Log compactable turns
+	p.logger.Printf("compaction: %d turns are compactable (endIdx <= %d)", len(compactableTurns), protectedStartIdx)
 
 	stats.considered = len(compactableTurns)
 
@@ -486,28 +478,28 @@ func (p *memoryProfile) compactOverflow(ctx context.Context, messages []state.Me
 	for i, turn := range compactableTurns {
 		// When forcing, skip threshold check and compact all eligible turns
 		if !forced && current <= p.conversationThreshold {
-			p.logger.Printf("DEBUG compaction: stopped at turn %d/%d (current=%d <= threshold=%d)", i, len(compactableTurns), current, p.conversationThreshold)
+			p.logger.Printf("compaction: stopped at turn %d/%d (current=%d <= threshold=%d)", i, len(compactableTurns), current, p.conversationThreshold)
 			break
 		}
-		p.logger.Printf("DEBUG compaction: attempting turn %d/%d (startIdx=%d, endIdx=%d, current=%d)", i+1, len(compactableTurns), turn.startIdx, turn.endIdx, current)
+		p.logger.Printf("compaction: attempting turn %d/%d (startIdx=%d, endIdx=%d, current=%d)", i+1, len(compactableTurns), turn.startIdx, turn.endIdx, current)
 		_, changed, err := p.compactTurn(ctx, messages, turn)
 		if err != nil {
-			p.logger.Printf("DEBUG compaction: turn %d FAILED: %v", i+1, err)
+			p.logger.Printf("compaction: turn %d FAILED: %v", i+1, err)
 			continue
 		}
 		if changed {
 			// Recalculate actual size from JSON after compaction
 			// Note: Empty shells will be removed by caller (Prepare)
 			newSize := p.totalActualSize(messages)
-			p.logger.Printf("DEBUG compaction: turn %d COMPACTED: %d -> %d chars (saved %d)", i+1, current, newSize, current-newSize)
+			p.logger.Printf("compaction: turn %d COMPACTED: %d -> %d chars (saved %d)", i+1, current, newSize, current-newSize)
 			current = newSize
 			stats.compacted++
 		} else {
-			p.logger.Printf("DEBUG compaction: turn %d SKIPPED: no change", i+1)
+			p.logger.Printf("compaction: turn %d SKIPPED: no change", i+1)
 		}
 	}
 
-	p.logger.Printf("DEBUG compaction: finished - compacted %d/%d turns, %d -> %d chars", stats.compacted, len(compactableTurns), stats.before, current)
+	p.logger.Printf("compaction: finished - compacted %d/%d turns, %d -> %d chars", stats.compacted, len(compactableTurns), stats.before, current)
 	stats.after = current
 	duration := time.Since(startTime)
 
@@ -704,12 +696,7 @@ func (p *memoryProfile) ReloadConfig(cfg config.Config) error {
 		p.summaryPrompt = cfg.CompactionPrompt
 	}
 	// Update summary model using provider-specific value if available
-	summaryModel := cfg.SummaryModel
-	if cfg.ProviderSummaryModels != nil {
-		if providerSummary, ok := cfg.ProviderSummaryModels[p.provider]; ok && providerSummary != "" {
-			summaryModel = providerSummary
-		}
-	}
+	summaryModel := cfg.SummaryModelFor(p.provider)
 	if summaryModel != "" {
 		p.summaryModel = summaryModel
 	}
@@ -729,10 +716,9 @@ func (p *memoryProfile) UpdateProviderModel(provider, model string) {
 	p.conversationThreshold = p.cfg.CalculateConversationThreshold(provider, model)
 
 	// Update summary model for new provider
-	if p.cfg.ProviderSummaryModels != nil {
-		if providerSummary, ok := p.cfg.ProviderSummaryModels[provider]; ok && providerSummary != "" {
-			p.summaryModel = providerSummary
-		}
+	summaryModel := p.cfg.SummaryModelFor(provider)
+	if summaryModel != "" {
+		p.summaryModel = summaryModel
 	}
 
 	p.logger.Printf("Updated compaction thresholds for %s/%s: message=%d, conversation=%d, summary_model=%s",

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"cando/internal/llm"
+	"cando/internal/logging"
 )
 
 // Client is a minimal HTTP wrapper around the OpenRouter chat completions API.
@@ -53,6 +54,7 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 	req.Header.Set("X-Title", "Cando")
 
 	c.logger.Printf("sending %d messages to model %s", len(reqPayload.Messages), reqPayload.Model)
+	logging.DevLog("openrouter: sending request to %s with %d messages", reqPayload.Model, len(reqPayload.Messages))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -65,11 +67,14 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 		return respPayload, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode >= 300 {
+		logging.ErrorLog("openrouter API error: %d - %s", resp.StatusCode, string(body))
 		return respPayload, fmt.Errorf("api error: %s", string(body))
 	}
 
 	if err := json.Unmarshal(body, &respPayload); err != nil {
+		logging.ErrorLog("openrouter response parse error: %v", err)
 		return respPayload, fmt.Errorf("parse response: %w", err)
 	}
+	logging.DevLog("openrouter: received response with %d choices", len(respPayload.Choices))
 	return respPayload, nil
 }

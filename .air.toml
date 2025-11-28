@@ -3,7 +3,7 @@ tmp_dir = "tmp"
 
 [build]
   cmd = "go build -o ./tmp/cando ./cmd/cando"
-  bin = "./tmp/cando"
+  entrypoint = ["./tmp/cando", "web"]
   include_ext = ["go", "yaml", "html", "tmpl", "css", "js"]
   exclude_dir = ["tmp", "conversations", ".git"]
   exclude_file = []
@@ -11,7 +11,6 @@ tmp_dir = "tmp"
   stop_on_error = true
   send_interrupt = true
   kill_delay = 2000
-  args_bin = ["web"]
 
 [log]
   main_only = true

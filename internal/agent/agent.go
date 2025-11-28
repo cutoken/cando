@@ -25,6 +25,7 @@ import (
 	"cando/internal/contextprofile"
 	"cando/internal/credentials"
 	"cando/internal/llm"
+	"cando/internal/logging"
 	"cando/internal/prompts"
 	"cando/internal/state"
 	"cando/internal/tooling"
@@ -78,6 +79,41 @@ type WorkspaceContext struct {
 	root    string
 }
 
+// loadProjectInstructions reads the project instructions file for a workspace.
+// Returns empty string if no instructions file exists.
+func loadProjectInstructions(workspaceRoot string) string {
+	storageRoot, err := ProjectStorageRoot(workspaceRoot)
+	if err != nil {
+		return ""
+	}
+	instructionsPath := filepath.Join(storageRoot, "instructions.txt")
+	content, err := os.ReadFile(instructionsPath)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(content))
+}
+
+// injectProjectInstructions modifies messages to append project instructions to the system message
+func injectProjectInstructions(messages []state.Message, instructions string) []state.Message {
+	if instructions == "" || len(messages) == 0 {
+		return messages
+	}
+
+	// Make a copy to avoid modifying the original
+	result := make([]state.Message, len(messages))
+	copy(result, messages)
+
+	// Find and modify the system message (usually the first one)
+	for i, msg := range result {
+		if msg.Role == "system" {
+			result[i].Content = msg.Content + "\n\n---\nProject Instructions:\n" + instructions
+			break
+		}
+	}
+	return result
+}
+
 // Agent wires the CLI, state machine, tools, and LLM client together.
 type Agent struct {
 	client           llm.Client
@@ -93,8 +129,6 @@ type Agent struct {
 	providerBuilders map[string]ProviderBuilder
 	isTTY            bool
 	render           *glamour.TermRenderer
-	thinkingEnabled  bool
-	forceThinking    bool
 	requestCancelMu  sync.Mutex
 	requestCancel    context.CancelFunc
 	planMu           sync.RWMutex
@@ -108,6 +142,7 @@ type Agent struct {
 	toolOpts         tooling.Options // Original tool options for workspace switching
 	activeProvider   string          // Provider name for creating workspace profiles
 	profileModel     string          // Model name for creating workspace profiles
+	version          string          // Application version for update checks
 
 	// Multi-workspace support for web mode
 	workspacesMu      sync.RWMutex
@@ -129,6 +164,7 @@ type Options struct {
 	ProviderBuilders map[string]ProviderBuilder
 	ActiveProvider   string // Provider name for creating workspace profiles
 	ProfileModel     string // Model name for creating workspace profiles
+	Version          string // Application version for update checks
 }
 
 // New returns a fully wired Agent ready for the REPL loop.
@@ -157,13 +193,12 @@ func New(client llm.Client, cfg config.Config, cfgPath string, mgr *state.Manage
 		providerBuilders:  opts.ProviderBuilders,
 		isTTY:             term.IsTerminal(int(os.Stdin.Fd())),
 		render:            renderer,
-		thinkingEnabled:   cfg.ThinkingEnabled,
-		forceThinking:     cfg.ForceThinking,
 		resumeKey:         strings.TrimSpace(opts.ResumeKey),
 		workspaceRoot:     opts.WorkspaceRoot,
 		toolOpts:          toolOpts,
 		activeProvider:    opts.ActiveProvider,
 		profileModel:      opts.ProfileModel,
+		version:           opts.Version,
 		workspaceContexts: make(map[string]*WorkspaceContext),
 	}
 
@@ -228,6 +263,7 @@ func (a *Agent) RunOneShot(ctx context.Context, prompt string) error {
 func (a *Agent) reloadConfig(path string) error {
 	newCfg, err := config.Load(path)
 	if err != nil {
+		logging.ErrorLog("failed to reload config from %s: %v", path, err)
 		return err
 	}
 	if !strings.EqualFold(newCfg.Provider, a.cfg.Provider) {
@@ -241,14 +277,13 @@ func (a *Agent) reloadConfig(path string) error {
 	}
 	if reloader, ok := a.profile.(contextprofile.ConfigReloadable); ok {
 		if err := reloader.ReloadConfig(newCfg); err != nil {
+			logging.ErrorLog("context profile reload failed: %v", err)
 			return err
 		}
 	}
 	a.cfg = newCfg
 	a.cfgPath = path
-	a.thinkingEnabled = newCfg.ThinkingEnabled
-	a.forceThinking = newCfg.ForceThinking
-	fmt.Printf("Config reloaded from %s\n", path)
+	logging.UserLog("Config reloaded from %s", path)
 	return nil
 }
 
@@ -447,11 +482,12 @@ func (a *Agent) handleLine(ctx context.Context, input string) bool {
 		return a.handleCommand(strings.TrimSpace(input))
 	}
 
-	a.logger.Printf("[agent] dispatching %d chars", len(input))
+	// Log user input for debugging
+	logging.DevLog("dispatching prompt: %d chars", len(input))
 	response, finishReason, err := a.respond(ctx, input)
-	a.logger.Printf("[agent] respond finished: err=%v finish=%s len=%d", err, finishReason, len(response))
+	logging.DevLog("response received: err=%v finish=%s len=%d", err, finishReason, len(response))
 	if err != nil {
-		a.logger.Printf("agent error: %v", err)
+		logging.ErrorLog("agent error: %v", err)
 		return false
 	}
 	if response != "" {
@@ -476,7 +512,7 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 	for {
 		prepared, err := a.profile.Prepare(ctx, conv)
 		if err != nil {
-			a.logger.Printf("context profile prepare failed: %v", err)
+			logging.DevLog("context profile prepare failed: %v", err)
 		}
 		if prepared.Mutated {
 			if err := stateManager.Save(conv); err != nil {
@@ -491,7 +527,7 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 		// Inject hidden ultrathink message when force thinking is enabled
 		// Only inject for user messages, not for tool call response rounds
 		requestMessages := messages
-		if a.forceThinking && len(messages) > 0 && messages[len(messages)-1].Role == "user" {
+		if a.cfg.ForceThinking && len(messages) > 0 && messages[len(messages)-1].Role == "user" {
 			requestMessages = make([]state.Message, len(messages), len(messages)+1)
 			copy(requestMessages, messages)
 			requestMessages = append(requestMessages, state.Message{
@@ -501,7 +537,7 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 		}
 
 		totalChars := conversationCharCount(messages)
-		a.logger.Printf("[agent] invoking provider with %d messages (~%d chars)", len(messages), totalChars)
+		logging.DevLog("invoking provider with %d messages (~%d chars)", len(messages), totalChars)
 		fmt.Printf("(context size: %d chars)\n", totalChars)
 		req := llm.ChatRequest{
 			Model:       a.getActiveModel(),
@@ -509,7 +545,7 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 			Tools:       a.tools.Definitions(),
 			Temperature: a.cfg.Temperature,
 			Thinking: func() *llm.ThinkingOptions {
-				if !a.thinkingEnabled {
+				if !a.cfg.ThinkingEnabled {
 					return nil
 				}
 				return &llm.ThinkingOptions{Type: "enabled"}
@@ -528,9 +564,9 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 			}
 			return "", "", fmt.Errorf("chat completion: %w", err)
 		}
-		a.logger.Printf("[agent] received %d choices", len(resp.Choices))
+		logging.DevLog("received %d choices", len(resp.Choices))
 		if resp.Usage != nil {
-			a.logger.Printf("[agent] token usage: prompt=%d completion=%d total=%d",
+			logging.DevLog("token usage: prompt=%d completion=%d total=%d",
 				resp.Usage.PromptTokens, resp.Usage.CompletionTokens, resp.Usage.TotalTokens)
 			a.addTokens(resp.Usage.TotalTokens)
 		}
@@ -539,12 +575,8 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 		}
 
 		choice := resp.Choices[0]
-		a.logger.Printf("[DEBUG] LLM response - finish_reason: %s, content_length: %d, tool_calls: %d",
-			choice.FinishReason, len(choice.Message.Content), len(choice.Message.ToolCalls))
 		if len(choice.Message.ToolCalls) > 0 {
-			for i, tc := range choice.Message.ToolCalls {
-				a.logger.Printf("[DEBUG] ToolCall[%d]: name=%s", i, tc.Function.Name)
-			}
+			// Tool calls will be processed separately
 		}
 		conv.Append(choice.Message)
 		if err := stateManager.Save(conv); err != nil {
@@ -553,7 +585,7 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 
 		if len(choice.Message.ToolCalls) == 0 {
 			if mutated, err := a.profile.AfterResponse(ctx, conv); err != nil {
-				a.logger.Printf("context profile after-response failed: %v", err)
+				logging.DevLog("context profile after-response failed: %v", err)
 			} else if mutated {
 				if err := stateManager.Save(conv); err != nil {
 					return "", "", fmt.Errorf("save conversation: %w", err)
@@ -566,7 +598,7 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 			return "", "", err
 		}
 		if mutated, err := a.profile.AfterResponse(ctx, conv); err != nil {
-			a.logger.Printf("context profile after-response failed: %v", err)
+			logging.DevLog("context profile after-response failed: %v", err)
 		} else if mutated {
 			if err := stateManager.Save(conv); err != nil {
 				return "", "", fmt.Errorf("save conversation: %w", err)
@@ -591,7 +623,7 @@ func (a *Agent) respondWithCallbacksForWorkspace(ctx context.Context, userInput 
 		defer emitter.SetCompactionCallback(nil)
 	}
 
-	return a.respondLoop(ctx, conv, wsCtx.states, wsCtx.tools, wsCtx.profile, callback)
+	return a.respondLoop(ctx, conv, wsCtx.states, wsCtx.tools, wsCtx.profile, callback, wsCtx.root)
 }
 
 func (a *Agent) respondWithCallbacks(ctx context.Context, userInput string, callback StreamCallback) (string, string, error) {
@@ -607,10 +639,13 @@ func (a *Agent) respondWithCallbacks(ctx context.Context, userInput string, call
 		defer emitter.SetCompactionCallback(nil)
 	}
 
-	return a.respondLoop(ctx, conv, a.states, a.tools, a.profile, callback)
+	return a.respondLoop(ctx, conv, a.states, a.tools, a.profile, callback, "")
 }
 
-func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, stateManager *state.Manager, tools *tooling.Registry, profile contextprofile.Profile, callback StreamCallback) (string, string, error) {
+func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, stateManager *state.Manager, tools *tooling.Registry, profile contextprofile.Profile, callback StreamCallback, workspaceRoot string) (string, string, error) {
+	// Load project instructions once per conversation turn
+	projectInstructions := loadProjectInstructions(workspaceRoot)
+
 	for {
 		prepared, err := profile.Prepare(ctx, conv)
 		if err != nil {
@@ -626,10 +661,13 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 			messages = conv.Messages()
 		}
 
+		// Inject project instructions into system message
+		messages = injectProjectInstructions(messages, projectInstructions)
+
 		// Inject hidden ultrathink message when force thinking is enabled
 		// Only inject for user messages, not for tool call response rounds
 		requestMessages := messages
-		if a.forceThinking && len(messages) > 0 && messages[len(messages)-1].Role == "user" {
+		if a.cfg.ForceThinking && len(messages) > 0 && messages[len(messages)-1].Role == "user" {
 			requestMessages = make([]state.Message, len(messages), len(messages)+1)
 			copy(requestMessages, messages)
 			requestMessages = append(requestMessages, state.Message{
@@ -646,7 +684,7 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 			Tools:       tools.Definitions(),
 			Temperature: a.cfg.Temperature,
 			Thinking: func() *llm.ThinkingOptions {
-				if !a.thinkingEnabled {
+				if !a.cfg.ThinkingEnabled {
 					return nil
 				}
 				return &llm.ThinkingOptions{Type: "enabled"}
@@ -664,9 +702,9 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 			}
 			return "", "", fmt.Errorf("chat completion: %w", err)
 		}
-		a.logger.Printf("[agent] received %d choices", len(resp.Choices))
+		logging.DevLog("received %d choices", len(resp.Choices))
 		if resp.Usage != nil {
-			a.logger.Printf("[agent] token usage: prompt=%d completion=%d total=%d",
+			logging.DevLog("token usage: prompt=%d completion=%d total=%d",
 				resp.Usage.PromptTokens, resp.Usage.CompletionTokens, resp.Usage.TotalTokens)
 			a.addTokens(resp.Usage.TotalTokens)
 		}
@@ -675,12 +713,8 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 		}
 
 		choice := resp.Choices[0]
-		a.logger.Printf("[DEBUG] LLM response - finish_reason: %s, content_length: %d, tool_calls: %d",
-			choice.FinishReason, len(choice.Message.Content), len(choice.Message.ToolCalls))
 		if len(choice.Message.ToolCalls) > 0 {
-			for i, tc := range choice.Message.ToolCalls {
-				a.logger.Printf("[DEBUG] ToolCall[%d]: name=%s", i, tc.Function.Name)
-			}
+			// Tool calls will be processed separately
 		}
 		conv.Append(choice.Message)
 		if err := stateManager.Save(conv); err != nil {
@@ -782,7 +816,7 @@ func (a *Agent) processToolCallsWithCallback(ctx context.Context, conv *state.Co
 		tool, ok := tools.Lookup(call.Function.Name)
 		if !ok {
 			msg := fmt.Sprintf("tool %s not registered", call.Function.Name)
-			a.logger.Println(msg)
+			logging.ErrorLog(msg)
 			conv.Append(state.Message{Role: "tool", Name: call.Function.Name, Content: msg, ToolCallID: call.ID})
 			continue
 		}
@@ -790,7 +824,7 @@ func (a *Agent) processToolCallsWithCallback(ctx context.Context, conv *state.Co
 		if call.Function.Arguments != "" {
 			if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
 				msg := fmt.Sprintf("invalid args for %s: %v", call.Function.Name, err)
-				a.logger.Println(msg)
+				logging.ErrorLog(msg)
 				conv.Append(state.Message{Role: "tool", Name: call.Function.Name, Content: msg, ToolCallID: call.ID})
 				continue
 			}
@@ -806,21 +840,24 @@ func (a *Agent) processToolCallsWithCallback(ctx context.Context, conv *state.Co
 		} else if call.Function.Name == "update_plan" {
 			toolCtx = tooling.WithSessionStorage(ctx, conv.StoragePath())
 		}
+		// Provide user feedback for long-running tools
+		logging.UserLog("Executing tool: %s", call.Function.Name)
+
 		result, err := tool.Call(toolCtx, args)
 		if err != nil {
 			result = fmt.Sprintf("tool error: %v", err)
 			dur := time.Since(start).Round(time.Millisecond)
-			a.logger.Printf("[tool:%s] error after %s: %v", call.Function.Name, dur, err)
+			logging.ErrorLog("tool %s failed after %s: %v", call.Function.Name, dur, err)
 		} else {
 			dur := time.Since(start).Round(time.Millisecond)
 			originalLen := len(result)
-			a.logger.Printf("[tool:%s] %d bytes in %s", call.Function.Name, originalLen, dur)
+			logging.DevLog("tool %s completed: %d bytes in %s", call.Function.Name, originalLen, dur)
 
 			// Hard limit: truncate any tool result exceeding 50KB
 			const maxToolResultSize = 50000
 			if originalLen > maxToolResultSize {
 				result = result[:maxToolResultSize] + fmt.Sprintf("\n\n[TRUNCATED: Tool result too large (%d chars). Showing first %d chars. Use more specific filters, smaller ranges, or pagination.]", originalLen, maxToolResultSize)
-				a.logger.Printf("[tool:%s] TRUNCATED result from %d to %d bytes", call.Function.Name, originalLen, len(result))
+				logging.DevLog("tool %s result truncated from %d to %d bytes", call.Function.Name, originalLen, len(result))
 			}
 		}
 		conv.Append(state.Message{Role: "tool", Name: call.Function.Name, Content: result, ToolCallID: call.ID})
@@ -863,9 +900,9 @@ func (a *Agent) callProviderWithRetry(ctx context.Context, req llm.ChatRequest, 
 		resp, err := a.client.Chat(chatCtx, req)
 		elapsed := time.Since(start).Round(time.Millisecond)
 		chatCancel()
-		a.logger.Printf("[agent] provider call finished err=%v (attempt %d/%d, duration=%s)", err, attempt, maxRetries, elapsed)
+		logging.DevLog("provider call finished: err=%v (attempt %d/%d, duration=%s)", err, attempt, maxRetries, elapsed)
 		if err == nil {
-			a.logger.Printf("[agent] provider call succeeded in %s (attempt %d/%d)", elapsed, attempt, maxRetries)
+			logging.DevLog("provider call succeeded in %s (attempt %d/%d)", elapsed, attempt, maxRetries)
 			return resp, nil
 		}
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
@@ -959,9 +996,10 @@ func (a *Agent) ensureSessionSelected() error {
 func (a *Agent) initSessionSelection() error {
 	if key := strings.TrimSpace(a.resumeKey); key != "" {
 		if _, err := a.states.Use(key); err != nil {
+			logging.ErrorLog("failed to resume session %s: %v", key, err)
 			return fmt.Errorf("resume session %s: %w", key, err)
 		}
-		fmt.Printf("Resumed session '%s'.\n", key)
+		logging.UserLog("Resumed session '%s'", key)
 		return nil
 	}
 	keys := a.states.ListKeys()
@@ -1042,17 +1080,19 @@ func (a *Agent) startFreshSession() error {
 			key = fmt.Sprintf("%s-%d", base, attempt+1)
 		}
 		if _, err := a.states.NewState(key); err == nil {
-			fmt.Printf("Starting new session '%s'.\n", key)
+			logging.UserLog("Starting new session '%s'", key)
 			return nil
 		} else if !strings.Contains(strings.ToLower(err.Error()), "already exists") {
+			logging.ErrorLog("failed to create session %s: %v", key, err)
 			return err
 		}
 	}
 	fallback := fmt.Sprintf("session-%d", time.Now().UnixNano())
 	if _, err := a.states.NewState(fallback); err != nil {
+		logging.ErrorLog("failed to create fallback session %s: %v", fallback, err)
 		return err
 	}
-	fmt.Printf("Starting new session '%s'.\n", fallback)
+	logging.UserLog("Starting new session '%s'", fallback)
 	return nil
 }
 
@@ -1355,7 +1395,7 @@ func (a *Agent) handleCommand(cmd string) bool {
 	case ":thinking":
 		if len(parts) == 1 {
 			state := "off"
-			if a.thinkingEnabled {
+			if a.cfg.ThinkingEnabled {
 				state = "on"
 			}
 			fmt.Printf("Thinking is %s\n", state)
@@ -1363,10 +1403,16 @@ func (a *Agent) handleCommand(cmd string) bool {
 		}
 		switch strings.ToLower(parts[1]) {
 		case "on":
-			a.thinkingEnabled = true
+			a.cfg.ThinkingEnabled = true
+			if err := config.Save(a.cfg); err != nil {
+				fmt.Printf("Failed to save config: %v\n", err)
+			}
 			fmt.Println("Thinking enabled.")
 		case "off":
-			a.thinkingEnabled = false
+			a.cfg.ThinkingEnabled = false
+			if err := config.Save(a.cfg); err != nil {
+				fmt.Printf("Failed to save config: %v\n", err)
+			}
 			fmt.Println("Thinking disabled.")
 		default:
 			fmt.Println("Usage: :thinking on|off")
