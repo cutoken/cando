@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Release helper - creates and pushes release tags for stable versions
 # GitHub Actions will automatically build and create releases
+# Usage: ./dev/release.sh [version] [--dry-run]
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,6 +17,21 @@ info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 success() { echo -e "${BLUE}[SUCCESS]${NC} $1"; }
+
+# Parse arguments
+DRY_RUN=false
+VERSION=""
+for arg in "$@"; do
+    if [[ "$arg" == "--dry-run" ]]; then
+        DRY_RUN=true
+    elif [[ "$arg" =~ ^v[0-9] ]]; then
+        VERSION="$arg"
+    fi
+done
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    warn "DRY RUN MODE - No tag will be created"
+fi
 
 # Check we're in a git repo
 if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -42,8 +58,7 @@ if [ "$LOCAL" != "$REMOTE" ]; then
     error "Your main branch is not up to date with origin/main. Please pull first"
 fi
 
-# Get version argument
-VERSION="${1:-}"
+# Get version if not provided as argument
 if [[ -z "$VERSION" ]]; then
     # Get the highest version tag (including betas)
     HIGHEST_TAG=$(git tag --sort=-version:refname | head -1 2>/dev/null || echo "v0.0.0")
@@ -115,10 +130,10 @@ fi
 
 # Build test
 info "Testing build..."
-if ! go build -o /tmp/cando-test cmd/cando/main.go 2>/dev/null; then
+if ! go build -o /tmp/cando-release-test cmd/cando/main.go 2>/dev/null; then
     error "Build failed"
 fi
-rm -f /tmp/cando-test
+rm -f /tmp/cando-release-test
 
 # Get the previous release tag for changelog
 PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 2>/dev/null || "")
@@ -168,34 +183,41 @@ echo "$RELEASE_NOTES"
 echo "=============="
 echo ""
 
-read -rp "Create release with these notes? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    error "Aborted"
+if [[ "$DRY_RUN" == "true" ]]; then
+    success "DRY RUN PASSED - All checks successful!"
+    echo ""
+    echo "To create the actual release, run without --dry-run:"
+    echo -e "   ${GREEN}./dev/release.sh $VERSION${NC}"
+else
+    read -rp "Create release with these notes? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        error "Aborted"
+    fi
+
+    # Create annotated tag
+    info "Creating tag: $VERSION"
+    git tag -a "$VERSION" -m "$RELEASE_NOTES"
+
+    success "Tag created successfully!"
+    echo ""
+    echo "Next steps:"
+    echo "1. Push the tag to trigger GitHub Actions:"
+    echo -e "   ${GREEN}git push origin $VERSION${NC}"
+    echo ""
+    echo "2. GitHub Actions will automatically:"
+    echo "   - Build binaries for all platforms"
+    echo "   - Create a release on GitHub"
+    echo "   - Publish to the releases page"
+    echo ""
+    echo "3. Users can install with:"
+    echo -e "   ${BLUE}curl -fsSL https://raw.githubusercontent.com/cutoken/cando/main/install.sh | bash${NC}"
+    echo ""
+    echo "4. To delete the tag if needed:"
+    echo "   git tag -d $VERSION"
+    echo "   git push origin --delete $VERSION"
+    echo ""
+    echo "5. Don't forget to:"
+    echo "   - Update documentation if needed"
+    echo "   - Announce the release"
 fi
-
-# Create annotated tag
-info "Creating tag: $VERSION"
-git tag -a "$VERSION" -m "$RELEASE_NOTES"
-
-success "Tag created successfully!"
-echo ""
-echo "Next steps:"
-echo "1. Push the tag to trigger GitHub Actions:"
-echo -e "   ${GREEN}git push origin $VERSION${NC}"
-echo ""
-echo "2. GitHub Actions will automatically:"
-echo "   - Build binaries for all platforms"
-echo "   - Create a release on GitHub"
-echo "   - Publish to the releases page"
-echo ""
-echo "3. Users can install with:"
-echo -e "   ${BLUE}curl -fsSL https://raw.githubusercontent.com/cutoken/cando/main/install.sh | bash${NC}"
-echo ""
-echo "4. To delete the tag if needed:"
-echo "   git tag -d $VERSION"
-echo "   git push origin --delete $VERSION"
-echo ""
-echo "5. Don't forget to:"
-echo "   - Update documentation if needed"
-echo "   - Announce the release"
