@@ -143,16 +143,17 @@ install_binary() {
     tmp_file=$(mktemp)
     info "Downloading beta binary..."
     if ! curl -fsSL "$download_url" -o "$tmp_file" 2>/dev/null; then
-        error "Failed to download from ${download_url}
-        
-Possible reasons:
-1. Beta version ${version} doesn't exist
-2. Network issues
-3. GitHub API rate limit
-
-Try:
-- Check available releases at https://github.com/${REPO_OWNER}/${REPO_NAME}/releases
-- Specify a version: CANDO_BETA_VERSION=v1.0.0-beta.1 $0"
+        echo -e "${RED}[ERROR]${NC} Failed to download from: $download_url"
+        echo ""
+        echo "Possible reasons:"
+        echo "1. Beta version $version doesn't exist"
+        echo "2. Network issues"
+        echo "3. GitHub API rate limit"
+        echo ""
+        echo "Try:"
+        echo "- Check available releases at https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+        echo "- Specify a version: CANDO_BETA_VERSION=v1.0.0-beta.1"
+        exit 1
     fi
     
     # Install binary
