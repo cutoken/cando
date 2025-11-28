@@ -54,6 +54,13 @@ Move-Item cando.exe C:\Users\$env:USERNAME\bin\  # choose any folder on PATH
 
 Credentials are stored in `~/.cando/credentials.yaml`. Workspace data lives under `~/.cando/projects/`.
 
+### Community & Support
+
+**Join our Discord server for help, discussions, and updates:**
+- 🎮 **Discord**: https://discord.gg/fzWbCf9CA
+- 💬 GitHub Discussions: https://github.com/cutoken/cando/discussions
+- 🐛 Report Issues: https://github.com/cutoken/cando/issues
+
 ### Command-line Options
 
 ```bash
