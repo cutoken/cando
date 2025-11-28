@@ -161,53 +161,39 @@ if ! go build -o /tmp/cando-release-test cmd/cando/main.go 2>/dev/null; then
 fi
 rm -f /tmp/cando-release-test
 
-# Get the previous release tag for changelog
-PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 2>/dev/null || "")
-
-# Create release notes
-info "Generating release notes..."
-RELEASE_NOTES="Release $VERSION
-
-"
-
-if [[ -n "$PREV_TAG" ]]; then
-    RELEASE_NOTES+="## Changes since $PREV_TAG
-
-"
-    # Get commit messages grouped by type
-    FEATURES=$(git log ${PREV_TAG}..HEAD --oneline --grep="^feat" 2>/dev/null || true)
-    FIXES=$(git log ${PREV_TAG}..HEAD --oneline --grep="^fix" 2>/dev/null || true)
-    OTHER=$(git log ${PREV_TAG}..HEAD --oneline --grep="^(?!feat|fix)" 2>/dev/null || true)
+# Get release notes from user
+if [[ "$DRY_RUN" == "false" ]]; then
+    # Get the previous release tag for reference
+    PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 2>/dev/null || "")
     
-    if [[ -n "$FEATURES" ]]; then
-        RELEASE_NOTES+="### Features
-$FEATURES
-
-"
+    echo ""
+    echo "Enter release notes for $VERSION"
+    if [[ -n "$PREV_TAG" ]]; then
+        echo "(Previous release was $PREV_TAG)"
+        echo ""
+        echo "Recent commits:"
+        git log ${PREV_TAG}..HEAD --oneline 2>/dev/null | head -10
+    fi
+    echo ""
+    echo "Enter release notes (press Ctrl+D when done):"
+    echo "----------------------------------------"
+    RELEASE_NOTES=$(cat)
+    
+    if [[ -z "$RELEASE_NOTES" ]]; then
+        error "Release notes cannot be empty"
     fi
     
-    if [[ -n "$FIXES" ]]; then
-        RELEASE_NOTES+="### Fixes
-$FIXES
-
-"
-    fi
-    
-    # Add all changes summary
-    RELEASE_NOTES+="### All Changes
-$(git log ${PREV_TAG}..HEAD --oneline 2>/dev/null | head -20)
-"
+    # Show release notes for confirmation
+    echo ""
+    echo "Release Notes:"
+    echo "=============="
+    echo "$RELEASE_NOTES"
+    echo "=============="
+    echo ""
 else
-    RELEASE_NOTES+="Initial release"
+    # In dry run, skip release notes
+    RELEASE_NOTES="(Release notes will be entered during actual release)"
 fi
-
-# Show release notes for confirmation
-echo ""
-echo "Release Notes:"
-echo "=============="
-echo "$RELEASE_NOTES"
-echo "=============="
-echo ""
 
 if [[ "$DRY_RUN" == "true" ]]; then
     success "DRY RUN PASSED - All checks successful!"
