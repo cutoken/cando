@@ -39,7 +39,7 @@
 
         /* Header */
         header {
-            padding: 24px 0;
+            padding: 16px 0;
             border-bottom: 1px solid var(--border);
         }
 
@@ -80,18 +80,18 @@
 
         /* Hero */
         .hero {
-            padding: 80px 0;
+            padding: 40px 0 60px;
             text-align: center;
         }
 
         .hero-logo {
-            width: 120px;
-            margin-bottom: 32px;
+            width: 80px;
+            margin-bottom: 20px;
         }
 
         .hero h1 {
-            font-size: 3rem;
-            margin-bottom: 16px;
+            font-size: 2.5rem;
+            margin-bottom: 12px;
             background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -99,10 +99,10 @@
         }
 
         .hero p {
-            font-size: 1.25rem;
+            font-size: 1.1rem;
             color: var(--text-muted);
-            max-width: 700px;
-            margin: 0 auto 40px;
+            max-width: 650px;
+            margin: 0 auto 32px;
         }
 
         .cta-buttons {
@@ -150,9 +150,9 @@
 
         /* Discord Section */
         .discord-section {
-            padding: 60px 0;
+            padding: 40px 0;
             background: linear-gradient(135deg, #5865F2 0%, #7289DA 100%);
-            margin: 40px 0;
+            margin: 30px 0;
         }
 
         .discord-card {
@@ -187,14 +187,14 @@
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 24px;
+            padding: 20px;
             max-width: 700px;
-            margin: 0 auto 80px;
+            margin: 0 auto 40px;
         }
 
         .install-section h3 {
-            margin-bottom: 16px;
-            font-size: 1.25rem;
+            margin-bottom: 12px;
+            font-size: 1.15rem;
         }
 
         .install-section code {
@@ -256,6 +256,35 @@
 
         .tab-content.active {
             display: block;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+            
+            .hero p {
+                font-size: 1rem;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 200px;
+                text-align: center;
+            }
+            
+            .install-tabs {
+                flex-direction: column;
+            }
+            
+            .tab-button {
+                width: 100%;
+            }
         }
 
         /* Screenshot */
@@ -414,8 +443,8 @@
         <section class="hero">
             <div class="container">
                 <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/cando_logo.png" alt="Cando" class="hero-logo">
-                <h1>AI Coding Agent</h1>
-                <p>Web UI, multi-workspace support, and sandboxed tool execution. Run shell commands, edit files, and manage processes—all within isolated project workspaces.</p>
+                <h1>The AI That Actually Gets Shit Done</h1>
+                <p>Not another chatbot. Cando writes real code, runs real commands, and ships real features. Built a Pacman game in 5 minutes? Yeah, We CanDo that.</p>
                 <div class="cta-buttons">
                     <a href="#install" class="btn btn-primary">Install</a>
                     <a href="https://discord.gg/fzWbCf9CA" class="btn btn-discord">Join Discord</a>
@@ -453,8 +482,8 @@
         <section class="discord-section">
             <div class="container">
                 <div class="discord-card">
-                    <h2>Join Our Community! 🚀</h2>
-                    <p>Get help, share your projects, and chat with other Cando users</p>
+                    <h2>Join the CanDo Crew! 🚀</h2>
+                    <p>Share what you built, get help when you're stuck, or just vibe with other builders</p>
                     <a href="https://discord.gg/fzWbCf9CA" class="btn btn-discord">Join Discord Server</a>
                 </div>
             </div>
@@ -469,28 +498,28 @@
                 <h2>Features</h2>
                 <div class="features-grid">
                     <div class="feature-card">
-                        <h3>Web UI</h3>
-                        <p>Session management, provider switching, thinking mode, plan view, and multiple themes.</p>
+                        <h3>Actually Ships Code</h3>
+                        <p>Watch it build features in real-time. Not just suggestions - working, running code.</p>
                     </div>
                     <div class="feature-card">
-                        <h3>Sandboxed Execution</h3>
-                        <p>Shell commands, file operations, and background processes run within isolated workspaces.</p>
+                        <h3>True Agent Mode</h3>
+                        <p>No babysitting. It codes while you grab coffee. Full autonomous development.</p>
                     </div>
                     <div class="feature-card">
-                        <h3>Multi-Provider</h3>
-                        <p>Supports Z.AI and OpenRouter. Access Claude, GPT-4, Qwen, and 100+ models.</p>
+                        <h3>Z.AI & OpenRouter</h3>
+                        <p>Use Claude, GPT-4, GLM models via Z.AI, or any of 100+ models through OpenRouter.</p>
                     </div>
                     <div class="feature-card">
-                        <h3>Context Memory</h3>
-                        <p>Auto-summarizes long conversations, stores originals in SQLite, with recall and pin tools.</p>
+                        <h3>Remembers Everything</h3>
+                        <p>No more explaining your codebase over and over. Context that actually sticks.</p>
                     </div>
                     <div class="feature-card">
-                        <h3>Cross-Platform</h3>
-                        <p>Runs on Linux, macOS, and Windows. Single binary, no dependencies.</p>
+                        <h3>Works Anywhere</h3>
+                        <p>Linux, Mac, Windows. Single binary. We CanDo that.</p>
                     </div>
                     <div class="feature-card">
-                        <h3>Conversation Persistence</h3>
-                        <p>Auto-saves sessions. Resume anytime with --resume flag.</p>
+                        <h3>Pick Up Where You Left Off</h3>
+                        <p>Close your laptop, come back tomorrow. Your coding session is waiting.</p>
                     </div>
                 </div>
             </div>
@@ -498,8 +527,8 @@
 
         <section id="gallery" class="gallery">
             <div class="container">
-                <h2>Sample Projects</h2>
-                <p>Built with Cando</p>
+                <h2>Built with Cando in Minutes</h2>
+                <p>A Pacman game? A 3D animation? A sculpting tool? Yeah, We CanDo that.</p>
                 <div class="gallery-grid">
                     <div class="gallery-item">
                         <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/pacman.png" alt="Pacman Game">

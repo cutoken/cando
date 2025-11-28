@@ -4,7 +4,7 @@
 
 # Cando
 
-AI coding agent with web UI, multi-workspace support, and sandboxed tool execution. Run shell commands, edit files, and manage long-running processes—all within isolated project workspaces. Cross-platform (Linux, macOS, Windows). Supports Z.AI and OpenRouter providers.
+The AI coding agent that actually gets stuff done. True autonomous coding - it writes, tests, debugs, and ships real features while you focus on what matters. Supports Z.AI (GLM models) and OpenRouter (Claude, GPT-4, and 100+ models). Cross-platform: Linux, macOS, Windows.
 
 ## Install
 
