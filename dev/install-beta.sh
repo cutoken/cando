@@ -66,8 +66,6 @@ detect_platform() {
 get_latest_beta_version() {
     local version
     
-    info "Fetching latest beta version..."
-    
     # Fetch all releases and find the latest prerelease
     version=$(curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases" 2>/dev/null | \
               python3 -c "
