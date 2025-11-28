@@ -91,15 +91,15 @@ type CredentialManager interface {
 }
 
 type Options struct {
-	WorkspaceRoot         string
-	ShellTimeout          time.Duration
-	PlanPath              string
-	BinDir                string
-	ExternalData          bool
-	ProcessDir            string
-	CredManager           CredentialManager
-	ZAIVisionURL          string
-	OpenRouterVisionURL   string
+	WorkspaceRoot       string
+	ShellTimeout        time.Duration
+	PlanPath            string
+	BinDir              string
+	ExternalData        bool
+	ProcessDir          string
+	CredManager         CredentialManager
+	ZAIVisionURL        string
+	OpenRouterVisionURL string
 }
 
 func DefaultTools(opts Options) []Tool {

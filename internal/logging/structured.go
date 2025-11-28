@@ -78,7 +78,7 @@ func (s *StructuredLogger) log(level string, msg string, fields map[string]inter
 		if s.workspace != "" {
 			prefix += fmt.Sprintf("[ws:%s] ", s.workspace)
 		}
-		
+
 		output := prefix + msg
 		if len(fields) > 0 {
 			output += " |"

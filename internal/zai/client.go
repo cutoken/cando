@@ -184,10 +184,10 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 	if err != nil {
 		return respPayload, fmt.Errorf("read response: %w", err)
 	}
-	
+
 	// Log response status
 	c.logger.Printf("[z.ai] Response status: %d, size: %d bytes", resp.StatusCode, len(respBody))
-	
+
 	// Check for Z.AI custom error format (returns 200 with error object)
 	// Only treat as error if it has the error structure (code + msg fields)
 	type errorResponse struct {
@@ -200,7 +200,7 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 		c.logger.Printf("[z.ai] API returned error: code=%d msg=%s", errResp.Code, errResp.Msg)
 		return respPayload, fmt.Errorf("z.ai api error: %s", errResp.Msg)
 	}
-	
+
 	if resp.StatusCode >= 300 {
 		return respPayload, fmt.Errorf("api error: %s", strings.TrimSpace(string(respBody)))
 	}

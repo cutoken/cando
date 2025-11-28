@@ -25,8 +25,8 @@ import (
 	"cando/internal/contextprofile"
 	"cando/internal/credentials"
 	"cando/internal/llm"
-	"cando/internal/logging"
 	mockclient "cando/internal/llm/mockclient"
+	"cando/internal/logging"
 	"cando/internal/openrouter"
 	"cando/internal/prompts"
 	"cando/internal/state"
@@ -116,7 +116,7 @@ func main() {
 	}
 	defer logFile.Close()
 	logger := log.New(logFile, "cando ", log.LstdFlags|log.Lmicroseconds)
-	
+
 	// Set the logging package's logger to use the file instead of stdout
 	logging.Logger = logger
 

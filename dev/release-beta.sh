@@ -73,6 +73,13 @@ if ! git diff-index --quiet HEAD --; then
     fi
 fi
 
+# Check formatting first
+info "Checking code formatting..."
+UNFORMATTED=$(gofmt -l .)
+if [[ -n "$UNFORMATTED" ]]; then
+    error "Code is not properly formatted. Run 'go fmt ./...' to fix:\n$UNFORMATTED"
+fi
+
 # Run tests
 if [[ "${SKIP_TESTS:-}" != "1" ]]; then
     info "Running tests..."
