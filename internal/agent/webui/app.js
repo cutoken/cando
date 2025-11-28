@@ -204,9 +204,18 @@ async function initUI() {
     });
   }
 
-  // Chat dropdown in toolbar
+  // Chat button - switches to chat view (no dropdown)
   if (ui.chatPickerBtn) {
     ui.chatPickerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      switchToChatView();
+    });
+  }
+
+  // Chat dropdown button - opens chat switcher
+  const chatDropdownBtn = document.getElementById('chatDropdownBtn');
+  if (chatDropdownBtn) {
+    chatDropdownBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleChatDropdown();
     });
@@ -215,7 +224,10 @@ async function initUI() {
   // Close chat dropdown when clicking outside
   document.addEventListener('click', (e) => {
     if (!ui.chatMenu || ui.chatMenu.classList.contains('hidden')) return;
-    if (!ui.chatMenu.contains(e.target) && !ui.chatPickerBtn.contains(e.target)) {
+    const chatDropdownBtn = document.getElementById('chatDropdownBtn');
+    if (!ui.chatMenu.contains(e.target) &&
+        !ui.chatPickerBtn?.contains(e.target) &&
+        !chatDropdownBtn?.contains(e.target)) {
       hideChatDropdown();
     }
   });
@@ -272,6 +284,7 @@ async function initUI() {
   initFileDragDrop();
   initProjects();
   initUpdateChecker();
+  initFileExplorer();
   sendTelemetry();
   updateStatusBar();
 
@@ -295,6 +308,11 @@ async function refreshSession() {
 
     render();
     setStatus(appState.data.running ? 'Sublimating… (Esc to cancel)' : 'Ready.');
+
+    // Refresh file explorer
+    if (typeof loadFileTree === 'function') {
+      loadFileTree();
+    }
   } catch (err) {
     console.error(err);
     setStatus(err.message || 'Failed to load session');
@@ -1701,9 +1719,22 @@ function renderMarkdown(text) {
   if (window.marked) {
     // Configure renderer to open links in new tab
     const renderer = new marked.Renderer();
-    renderer.link = function(href, title, text) {
-      const titleAttr = title ? ` title="${title}"` : '';
-      return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+    // marked 4.x+ passes object {href, title, text}, older versions pass separate params
+    renderer.link = function(hrefOrObj, title, text) {
+      let href, linkTitle, linkText;
+      if (typeof hrefOrObj === 'object' && hrefOrObj !== null) {
+        // New API (marked 4.x+)
+        href = hrefOrObj.href;
+        linkTitle = hrefOrObj.title;
+        linkText = hrefOrObj.text;
+      } else {
+        // Old API
+        href = hrefOrObj;
+        linkTitle = title;
+        linkText = text;
+      }
+      const titleAttr = linkTitle ? ` title="${linkTitle}"` : '';
+      return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${linkText}</a>`;
     };
     const html = window.marked.parse(source, { breaks: true, renderer: renderer });
     if (window.DOMPurify) {
@@ -4025,6 +4056,11 @@ function updateSessionPickerLabel() {
 
 async function switchWorkspace(path) {
   try {
+    // Close open editor tabs before switching
+    if (typeof closeAllTabs === 'function') {
+      closeAllTabs();
+    }
+
     // Update localStorage with new workspace
     setCurrentWorkspacePath(path);
 
@@ -5322,3 +5358,1170 @@ window.testRealRestart = function() {
   showUpdatePhase('ready'); // Skip to ready phase
   console.log('Click "Restart Now" to trigger restart (uses real endpoint)');
 };
+
+// ============================================
+// File Explorer & Editor
+// ============================================
+
+const fileExplorer = {
+  sidebar: null,
+  fileTree: null,
+  // Split pane elements
+  editorPane: null,
+  chatPane: null,
+  paneResizeHandle: null,
+  editorTabsSection: null,
+  editorTabs: null,
+  editorContainer: null,
+  // Sidebar controls
+  collapseSidebarBtn: null,
+  expandSidebarBtn: null,
+  sidebarResizeHandle: null,
+  // Pane controls
+  collapseEditorBtn: null,
+  expandEditorBtn: null,
+  collapseChatBtn: null,
+  expandChatBtn: null,
+  // Editor state
+  editor: null,
+  openTabs: [],      // Array of { path, name, content, dirty, modTime, workspacePath }
+  activeTabPath: null,
+  saveTimeout: null,
+  AUTOSAVE_DELAY: 1500,
+  FILE_WATCH_INTERVAL: 3000,  // Check for external changes every 3s
+  TREE_REFRESH_INTERVAL: 5000, // Refresh tree every 5s
+  fileWatchTimer: null,
+  treeRefreshTimer: null,
+  isPaneResizing: false,
+  isSidebarResizing: false,
+};
+
+function initFileExplorer() {
+  // File sidebar elements
+  fileExplorer.sidebar = document.getElementById('fileSidebar');
+  fileExplorer.fileTree = document.getElementById('fileTree');
+  fileExplorer.collapseSidebarBtn = document.getElementById('collapseSidebarBtn');
+  fileExplorer.expandSidebarBtn = document.getElementById('expandSidebarBtn');
+  fileExplorer.sidebarResizeHandle = document.getElementById('sidebarResizeHandle');
+
+  // Split pane elements
+  fileExplorer.editorPane = document.getElementById('editorPane');
+  fileExplorer.chatPane = document.getElementById('chatPane');
+  fileExplorer.paneResizeHandle = document.getElementById('paneResizeHandle');
+  fileExplorer.editorTabsSection = document.getElementById('editorTabsSection');
+  fileExplorer.editorTabs = document.getElementById('editorTabs');
+  fileExplorer.editorContainer = document.getElementById('editorContainer');
+
+  // Pane collapse/expand buttons
+  fileExplorer.collapseEditorBtn = document.getElementById('collapseEditorBtn');
+  fileExplorer.expandEditorBtn = document.getElementById('expandEditorBtn');
+  fileExplorer.collapseChatBtn = document.getElementById('collapseChatBtn');
+  fileExplorer.expandChatBtn = document.getElementById('expandChatBtn');
+
+  // Explorer toolbar buttons
+  fileExplorer.newFileBtn = document.getElementById('newFileBtn');
+  fileExplorer.newFolderBtn = document.getElementById('newFolderBtn');
+  fileExplorer.revealInExplorerBtn = document.getElementById('revealInExplorerBtn');
+
+  if (!fileExplorer.sidebar) return;
+
+  // Sidebar toggle handlers
+  if (fileExplorer.collapseSidebarBtn) {
+    fileExplorer.collapseSidebarBtn.addEventListener('click', () => {
+      fileExplorer.sidebar.classList.add('collapsed');
+      if (fileExplorer.expandSidebarBtn) {
+        fileExplorer.expandSidebarBtn.classList.remove('hidden');
+      }
+    });
+  }
+
+  if (fileExplorer.expandSidebarBtn) {
+    fileExplorer.expandSidebarBtn.addEventListener('click', () => {
+      fileExplorer.sidebar.classList.remove('collapsed');
+      fileExplorer.expandSidebarBtn.classList.add('hidden');
+    });
+  }
+
+  // Explorer toolbar handlers
+  if (fileExplorer.newFileBtn) {
+    fileExplorer.newFileBtn.addEventListener('click', handleNewFile);
+  }
+  if (fileExplorer.newFolderBtn) {
+    fileExplorer.newFolderBtn.addEventListener('click', handleNewFolder);
+  }
+  if (fileExplorer.revealInExplorerBtn) {
+    fileExplorer.revealInExplorerBtn.addEventListener('click', handleRevealInExplorer);
+  }
+
+  // Sidebar resize handle
+  if (fileExplorer.sidebarResizeHandle) {
+    fileExplorer.sidebarResizeHandle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      fileExplorer.isSidebarResizing = true;
+      fileExplorer.sidebarResizeHandle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+  }
+
+  // Pane resize handle
+  if (fileExplorer.paneResizeHandle) {
+    fileExplorer.paneResizeHandle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      fileExplorer.isPaneResizing = true;
+      fileExplorer.paneResizeHandle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+  }
+
+  // Global mouse handlers for resizing
+  document.addEventListener('mousemove', (e) => {
+    if (fileExplorer.isSidebarResizing) {
+      const newWidth = e.clientX;
+      if (newWidth >= 150 && newWidth <= 500) {
+        fileExplorer.sidebar.style.width = newWidth + 'px';
+      }
+    }
+    if (fileExplorer.isPaneResizing && fileExplorer.editorPane && fileExplorer.chatPane) {
+      const container = document.getElementById('splitPaneContainer');
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        const offsetX = e.clientX - containerRect.left;
+        const containerWidth = containerRect.width;
+        const minWidth = 250;
+        const maxWidth = containerWidth - 300;
+        if (offsetX >= minWidth && offsetX <= maxWidth) {
+          fileExplorer.editorPane.style.flex = 'none';
+          fileExplorer.editorPane.style.width = offsetX + 'px';
+        }
+      }
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (fileExplorer.isSidebarResizing) {
+      fileExplorer.isSidebarResizing = false;
+      fileExplorer.sidebarResizeHandle?.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    if (fileExplorer.isPaneResizing) {
+      fileExplorer.isPaneResizing = false;
+      fileExplorer.paneResizeHandle?.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
+
+  // Editor pane collapse/expand
+  if (fileExplorer.collapseEditorBtn) {
+    fileExplorer.collapseEditorBtn.addEventListener('click', () => {
+      collapseEditorPane();
+    });
+  }
+
+  if (fileExplorer.expandEditorBtn) {
+    fileExplorer.expandEditorBtn.addEventListener('click', () => {
+      expandEditorPane();
+    });
+  }
+
+  // Chat pane collapse/expand
+  if (fileExplorer.collapseChatBtn) {
+    fileExplorer.collapseChatBtn.addEventListener('click', () => {
+      collapseChatPane();
+    });
+  }
+
+  if (fileExplorer.expandChatBtn) {
+    fileExplorer.expandChatBtn.addEventListener('click', () => {
+      expandChatPane();
+    });
+  }
+
+  // Load file tree when workspace changes
+  loadFileTree();
+}
+
+async function loadFileTree() {
+  // Reset tree hash on load to ensure fresh render
+  lastTreeHash = '';
+
+  if (!fileExplorer.fileTree || !appState.data?.workspace?.path) {
+    if (fileExplorer.fileTree) {
+      fileExplorer.fileTree.innerHTML = '<div class="file-tree-empty">No project selected</div>';
+    }
+    stopFileWatching();
+    stopTreeRefresh();
+    return;
+  }
+
+  const workspacePath = appState.data.workspace.path;
+
+  try {
+    const res = await fetch(`/api/files/tree?workspace=${encodeURIComponent(workspacePath)}`);
+    if (!res.ok) throw new Error('Failed to load files');
+
+    const tree = await res.json();
+    renderFileTree(tree, workspacePath);
+
+    // Restore previously open tabs for this workspace
+    await restoreOpenTabs();
+
+    // Start file watching and tree refresh
+    startFileWatching();
+    startTreeRefresh();
+  } catch (err) {
+    console.error('Failed to load file tree:', err);
+    fileExplorer.fileTree.innerHTML = '<div class="file-tree-empty">Failed to load files</div>';
+  }
+}
+
+function renderFileTree(entries, workspacePath) {
+  fileExplorer.fileTree.innerHTML = '';
+
+  // Extract project name from workspace path
+  const projectName = workspacePath.split('/').filter(p => p).pop() || 'Project';
+
+  // Create root project node (VS Code style)
+  const rootItem = document.createElement('div');
+  rootItem.className = 'file-tree-item file-tree-root expanded';
+  rootItem.innerHTML = `
+    <i data-lucide="chevron-down" class="expand-icon"></i>
+    <span class="item-name root-name">${escapeHtml(projectName.toUpperCase())}</span>
+  `;
+
+  // Create container for project contents
+  const rootContents = document.createElement('div');
+  rootContents.className = 'file-tree-folder-contents expanded';
+
+  // Root toggle handler
+  rootItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isExpanded = rootItem.classList.toggle('expanded');
+    rootContents.classList.toggle('expanded', isExpanded);
+    // Update chevron icon
+    const chevron = rootItem.querySelector('.expand-icon');
+    if (chevron) {
+      chevron.setAttribute('data-lucide', isExpanded ? 'chevron-down' : 'chevron-right');
+      lucide.createIcons({ nodes: [chevron.parentElement] });
+    }
+  });
+
+  fileExplorer.fileTree.appendChild(rootItem);
+  fileExplorer.fileTree.appendChild(rootContents);
+
+  // Handle empty folder
+  if (!entries || entries.length === 0) {
+    rootContents.innerHTML = '<div class="file-tree-empty">Empty folder</div>';
+    lucide.createIcons({ nodes: [fileExplorer.fileTree] });
+    return;
+  }
+
+  // Render all entries under root
+  for (const entry of entries) {
+    renderFileTreeItem(entry, rootContents, workspacePath, 0);
+  }
+
+  lucide.createIcons({ nodes: [fileExplorer.fileTree] });
+}
+
+function renderFileTreeItem(entry, container, workspacePath, depth) {
+  const item = document.createElement('div');
+  item.className = 'file-tree-item';
+  item.dataset.path = entry.path;
+  item.dataset.depth = depth;
+  item.dataset.isDir = entry.isDir;
+
+  if (entry.isDir) {
+    item.innerHTML = `
+      <i data-lucide="chevron-right" class="expand-icon"></i>
+      <i data-lucide="folder"></i>
+      <span class="item-name">${escapeHtml(entry.name)}</span>
+    `;
+
+    const childContainer = document.createElement('div');
+    childContainer.className = 'file-tree-folder-contents';
+
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isExpanded = item.classList.toggle('expanded');
+      childContainer.classList.toggle('expanded', isExpanded);
+
+      // Toggle chevron icon
+      const chevron = item.querySelector('.expand-icon');
+      if (chevron) {
+        chevron.setAttribute('data-lucide', isExpanded ? 'chevron-down' : 'chevron-right');
+        lucide.createIcons({ nodes: [item] });
+      }
+
+      if (isExpanded && childContainer.children.length === 0 && entry.children) {
+        for (const child of entry.children) {
+          renderFileTreeItem(child, childContainer, workspacePath, depth + 1);
+        }
+        lucide.createIcons({ nodes: [childContainer] });
+      }
+    });
+
+    container.appendChild(item);
+    container.appendChild(childContainer);
+  } else {
+    const icon = getFileIcon(entry.name);
+    item.innerHTML = `
+      <i data-lucide="${icon}"></i>
+      <span class="item-name">${escapeHtml(entry.name)}</span>
+    `;
+
+    item.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      openFile(entry.path, entry.name, workspacePath);
+    });
+
+    container.appendChild(item);
+  }
+}
+
+// Reveal and highlight a file in the tree (VS Code behavior)
+function revealFileInTree(filePath) {
+  if (!fileExplorer.fileTree || !filePath) return;
+
+  // Remove previous selection
+  const prevSelected = fileExplorer.fileTree.querySelector('.file-tree-item.selected');
+  if (prevSelected) {
+    prevSelected.classList.remove('selected');
+  }
+
+  // Get workspace path to calculate relative path
+  const workspacePath = appState.data?.workspace?.path;
+  if (!workspacePath) return;
+
+  // Calculate relative path (tree uses relative paths from workspace root)
+  let relativePath = filePath;
+  if (filePath.startsWith(workspacePath)) {
+    relativePath = filePath.slice(workspacePath.length);
+    if (relativePath.startsWith('/')) relativePath = relativePath.slice(1);
+  }
+
+  const pathParts = relativePath.split('/').filter(p => p);
+  if (pathParts.length === 0) return;
+
+  // First, make sure root is expanded
+  const rootItem = fileExplorer.fileTree.querySelector('.file-tree-root');
+  const rootContents = fileExplorer.fileTree.querySelector('.file-tree-folder-contents');
+  if (rootItem && rootContents && !rootItem.classList.contains('expanded')) {
+    rootItem.classList.add('expanded');
+    rootContents.classList.add('expanded');
+    const chevron = rootItem.querySelector('.expand-icon');
+    if (chevron) {
+      chevron.setAttribute('data-lucide', 'chevron-down');
+      lucide.createIcons({ nodes: [rootItem] });
+    }
+  }
+
+  // Build RELATIVE path incrementally (tree items use relative paths)
+  let currentRelPath = '';
+  let currentContainer = rootContents;
+
+  for (let i = 0; i < pathParts.length; i++) {
+    const part = pathParts[i];
+    currentRelPath = currentRelPath ? currentRelPath + '/' + part : part;
+    const isLastPart = i === pathParts.length - 1;
+
+    // Find the item in current container by relative path
+    const item = currentContainer?.querySelector(`.file-tree-item[data-path="${currentRelPath}"]`);
+
+    if (!item) {
+      // Item not found - might be in unexpanded folder
+      break;
+    }
+
+    if (isLastPart) {
+      // This is the file - select and scroll to it
+      item.classList.add('selected');
+      item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      // This is a folder - expand it if not already
+      if (!item.classList.contains('expanded')) {
+        item.click(); // Trigger expansion
+      }
+      // Get the folder contents container (next sibling)
+      currentContainer = item.nextElementSibling;
+    }
+  }
+}
+
+// Explorer toolbar handlers
+async function handleNewFile() {
+  const workspacePath = appState.data?.workspace?.path;
+  if (!workspacePath) {
+    showToast('No workspace selected', 'error');
+    return;
+  }
+
+  // Get currently selected folder or use root
+  const selectedItem = fileExplorer.fileTree?.querySelector('.file-tree-item.selected');
+  let basePath = '';
+  if (selectedItem) {
+    const itemPath = selectedItem.getAttribute('data-path');
+    const isDir = selectedItem.getAttribute('data-is-dir') === 'true';
+    basePath = isDir ? itemPath : itemPath.substring(0, itemPath.lastIndexOf('/'));
+  }
+
+  const fileName = prompt('Enter file name:', 'newfile.txt');
+  if (!fileName || !fileName.trim()) return;
+
+  const filePath = basePath ? `${basePath}/${fileName.trim()}` : fileName.trim();
+
+  try {
+    const resp = await fetch('/api/files/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace: workspacePath, path: filePath })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      showToast(err.error || 'Failed to create file', 'error');
+      return;
+    }
+
+    // Refresh tree and open the new file
+    await refreshFileTree();
+    openFile(workspacePath, filePath);
+    showToast(`Created ${fileName}`, 'success');
+  } catch (err) {
+    showToast('Failed to create file', 'error');
+  }
+}
+
+async function handleNewFolder() {
+  const workspacePath = appState.data?.workspace?.path;
+  if (!workspacePath) {
+    showToast('No workspace selected', 'error');
+    return;
+  }
+
+  // Get currently selected folder or use root
+  const selectedItem = fileExplorer.fileTree?.querySelector('.file-tree-item.selected');
+  let basePath = '';
+  if (selectedItem) {
+    const itemPath = selectedItem.getAttribute('data-path');
+    const isDir = selectedItem.getAttribute('data-is-dir') === 'true';
+    basePath = isDir ? itemPath : itemPath.substring(0, itemPath.lastIndexOf('/'));
+  }
+
+  const folderName = prompt('Enter folder name:', 'newfolder');
+  if (!folderName || !folderName.trim()) return;
+
+  const folderPath = basePath ? `${basePath}/${folderName.trim()}` : folderName.trim();
+
+  try {
+    const resp = await fetch('/api/files/mkdir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace: workspacePath, path: folderPath })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      showToast(err.error || 'Failed to create folder', 'error');
+      return;
+    }
+
+    // Refresh tree
+    await refreshFileTree();
+    showToast(`Created ${folderName}`, 'success');
+  } catch (err) {
+    showToast('Failed to create folder', 'error');
+  }
+}
+
+async function handleRevealInExplorer() {
+  const workspacePath = appState.data?.workspace?.path;
+  if (!workspacePath) {
+    showToast('No workspace selected', 'error');
+    return;
+  }
+
+  // Get currently selected item or use workspace root
+  const selectedItem = fileExplorer.fileTree?.querySelector('.file-tree-item.selected');
+  const filePath = selectedItem?.getAttribute('data-path') || '';
+
+  try {
+    const resp = await fetch('/api/files/reveal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace: workspacePath, path: filePath })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      showToast(err.error || 'Failed to open explorer', 'error');
+    }
+  } catch (err) {
+    showToast('Failed to open explorer', 'error');
+  }
+}
+
+function getFileIcon(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  const iconMap = {
+    js: 'file-code',
+    ts: 'file-code',
+    jsx: 'file-code',
+    tsx: 'file-code',
+    go: 'file-code',
+    py: 'file-code',
+    rb: 'file-code',
+    rs: 'file-code',
+    java: 'file-code',
+    c: 'file-code',
+    cpp: 'file-code',
+    h: 'file-code',
+    css: 'file-code',
+    scss: 'file-code',
+    html: 'file-code',
+    vue: 'file-code',
+    svelte: 'file-code',
+    json: 'file-json',
+    yaml: 'file-text',
+    yml: 'file-text',
+    md: 'file-text',
+    txt: 'file-text',
+    sql: 'database',
+    sh: 'terminal',
+    bash: 'terminal',
+    zsh: 'terminal',
+    png: 'image',
+    jpg: 'image',
+    jpeg: 'image',
+    gif: 'image',
+    svg: 'image',
+    pdf: 'file',
+  };
+  return iconMap[ext] || 'file';
+}
+
+async function openFile(filePath, fileName, workspacePath) {
+  // Check if already open
+  const existingTab = fileExplorer.openTabs.find(t => t.path === filePath);
+  if (existingTab) {
+    switchToTab(filePath);
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/files/read?workspace=${encodeURIComponent(workspacePath)}&path=${encodeURIComponent(filePath)}`);
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || 'Failed to open file');
+      return;
+    }
+
+    const data = await res.json();
+
+    if (data.isBinary) {
+      alert('Cannot edit binary files');
+      return;
+    }
+
+    // Add to tabs
+    const tab = {
+      path: filePath,
+      name: fileName,
+      content: data.content,
+      originalContent: data.content,
+      dirty: false,
+      modTime: data.modTime,
+      workspacePath: workspacePath,
+    };
+
+    fileExplorer.openTabs.push(tab);
+
+    // Show editor pane and tabs section
+    showEditorPane();
+
+    renderTabs();
+    switchToTab(filePath);
+
+    // Refresh CodeMirror after container is visible (fixes blank editor issue)
+    if (fileExplorer.editor) {
+      setTimeout(() => fileExplorer.editor.refresh(), 0);
+    }
+
+    // Persist open tabs
+    saveOpenTabs();
+  } catch (err) {
+    console.error('Failed to open file:', err);
+    alert('Failed to open file');
+  }
+}
+
+function renderTabs() {
+  if (!fileExplorer.editorTabs) return;
+
+  fileExplorer.editorTabs.innerHTML = '';
+
+  for (const tab of fileExplorer.openTabs) {
+    const tabEl = document.createElement('button');
+    tabEl.className = 'editor-tab' + (tab.path === fileExplorer.activeTabPath ? ' active' : '') + (tab.dirty ? ' dirty' : '');
+    tabEl.dataset.path = tab.path;
+
+    const icon = getFileIcon(tab.name);
+    tabEl.innerHTML = `
+      <i data-lucide="${icon}" class="tab-icon"></i>
+      <span class="tab-name">${escapeHtml(tab.name)}</span>
+      <span class="tab-dirty"></span>
+      <button class="tab-close" title="Close">
+        <i data-lucide="x"></i>
+      </button>
+    `;
+
+    tabEl.addEventListener('click', (e) => {
+      if (!e.target.closest('.tab-close')) {
+        switchToTab(tab.path);
+      }
+    });
+
+    tabEl.querySelector('.tab-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(tab.path);
+    });
+
+    fileExplorer.editorTabs.appendChild(tabEl);
+  }
+
+  lucide.createIcons({ nodes: [fileExplorer.editorTabs] });
+}
+
+function switchToTab(path) {
+  const tab = fileExplorer.openTabs.find(t => t.path === path);
+  if (!tab) return;
+
+  fileExplorer.activeTabPath = path;
+
+  // Update tab UI
+  renderTabs();
+
+  // Update editor content
+  if (fileExplorer.editor) {
+    fileExplorer.editor.setValue(tab.content);
+    fileExplorer.editor.clearHistory();
+
+    // Set mode based on file extension
+    const mode = getModeForFile(tab.name);
+    fileExplorer.editor.setOption('mode', mode);
+  } else {
+    // Initialize CodeMirror
+    initEditor(tab);
+  }
+
+  // Reveal file in explorer tree (VS Code behavior)
+  revealFileInTree(path);
+
+  // Save active tab
+  saveOpenTabs();
+}
+
+function initEditor(tab) {
+  if (!fileExplorer.editorContainer || !window.CodeMirror) return;
+
+  fileExplorer.editorContainer.innerHTML = '';
+
+  const mode = getModeForFile(tab.name);
+
+  fileExplorer.editor = CodeMirror(fileExplorer.editorContainer, {
+    value: tab.content,
+    mode: mode,
+    theme: 'material-darker',
+    lineNumbers: true,
+    indentUnit: 2,
+    tabSize: 2,
+    indentWithTabs: false,
+    lineWrapping: true,
+    matchBrackets: true,
+    autoCloseBrackets: true,
+    extraKeys: {
+      'Ctrl-S': () => saveCurrentFile(),
+      'Cmd-S': () => saveCurrentFile(),
+    },
+  });
+
+  // Handle changes
+  fileExplorer.editor.on('change', () => {
+    const currentTab = fileExplorer.openTabs.find(t => t.path === fileExplorer.activeTabPath);
+    if (!currentTab) return;
+
+    const newContent = fileExplorer.editor.getValue();
+    currentTab.content = newContent;
+    currentTab.dirty = newContent !== currentTab.originalContent;
+
+    // Update tab UI to show dirty state
+    const tabEl = fileExplorer.editorTabs.querySelector(`[data-path="${currentTab.path}"]`);
+    if (tabEl) {
+      tabEl.classList.toggle('dirty', currentTab.dirty);
+    }
+
+    // Auto-save with debounce
+    if (fileExplorer.saveTimeout) {
+      clearTimeout(fileExplorer.saveTimeout);
+    }
+    if (currentTab.dirty) {
+      fileExplorer.saveTimeout = setTimeout(() => {
+        saveCurrentFile();
+      }, fileExplorer.AUTOSAVE_DELAY);
+    }
+  });
+}
+
+function getModeForFile(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  const modeMap = {
+    js: 'javascript',
+    jsx: 'javascript',
+    ts: 'javascript',
+    tsx: 'javascript',
+    json: { name: 'javascript', json: true },
+    html: 'htmlmixed',
+    htm: 'htmlmixed',
+    vue: 'htmlmixed',
+    svelte: 'htmlmixed',
+    xml: 'xml',
+    css: 'css',
+    scss: 'css',
+    less: 'css',
+    md: 'markdown',
+    markdown: 'markdown',
+    py: 'python',
+    go: 'go',
+    sh: 'shell',
+    bash: 'shell',
+    zsh: 'shell',
+    yaml: 'yaml',
+    yml: 'yaml',
+    sql: 'sql',
+    rs: 'rust',
+    c: 'text/x-csrc',
+    cpp: 'text/x-c++src',
+    h: 'text/x-csrc',
+    hpp: 'text/x-c++src',
+    java: 'text/x-java',
+  };
+  return modeMap[ext] || 'text/plain';
+}
+
+async function saveCurrentFile() {
+  const tab = fileExplorer.openTabs.find(t => t.path === fileExplorer.activeTabPath);
+  if (!tab || !tab.dirty) return;
+
+  try {
+    const res = await fetch('/api/files/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace: tab.workspacePath,
+        path: tab.path,
+        content: tab.content,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      console.error('Failed to save file:', err.error);
+      return;
+    }
+
+    const data = await res.json();
+    tab.originalContent = tab.content;
+    tab.dirty = false;
+    tab.modTime = data.modTime;
+
+    // Update tab UI
+    const tabEl = fileExplorer.editorTabs.querySelector(`[data-path="${tab.path}"]`);
+    if (tabEl) {
+      tabEl.classList.remove('dirty');
+    }
+  } catch (err) {
+    console.error('Failed to save file:', err);
+  }
+}
+
+function closeTab(path) {
+  const tabIndex = fileExplorer.openTabs.findIndex(t => t.path === path);
+  if (tabIndex === -1) return;
+
+  const tab = fileExplorer.openTabs[tabIndex];
+
+  // Check for unsaved changes
+  if (tab.dirty) {
+    if (!confirm(`"${tab.name}" has unsaved changes. Close anyway?`)) {
+      return;
+    }
+  }
+
+  // Remove tab
+  fileExplorer.openTabs.splice(tabIndex, 1);
+
+  // Switch to another tab or hide editor pane
+  if (fileExplorer.openTabs.length === 0) {
+    fileExplorer.activeTabPath = null;
+    hideEditorPane();
+    if (fileExplorer.editor) {
+      fileExplorer.editor = null;
+      if (fileExplorer.editorContainer) {
+        fileExplorer.editorContainer.innerHTML = '';
+      }
+    }
+  } else {
+    // Switch to previous or next tab
+    const newIndex = Math.min(tabIndex, fileExplorer.openTabs.length - 1);
+    switchToTab(fileExplorer.openTabs[newIndex].path);
+  }
+
+  renderTabs();
+  saveOpenTabs();
+}
+
+// Close all tabs when switching projects
+function closeAllTabs() {
+  stopFileWatching();
+  fileExplorer.openTabs = [];
+  fileExplorer.activeTabPath = null;
+  hideEditorPane();
+  if (fileExplorer.editor) {
+    fileExplorer.editor = null;
+    if (fileExplorer.editorContainer) {
+      fileExplorer.editorContainer.innerHTML = '';
+    }
+  }
+  if (fileExplorer.editorTabs) {
+    fileExplorer.editorTabs.innerHTML = '';
+  }
+  saveOpenTabs();
+}
+
+// File watching - detect external changes
+function startFileWatching() {
+  if (fileExplorer.fileWatchTimer) return;
+
+  fileExplorer.fileWatchTimer = setInterval(async () => {
+    if (fileExplorer.openTabs.length === 0) return;
+
+    const dirtyChanges = [];  // Files with local changes that were modified externally
+    const cleanChanges = [];  // Files without local changes that were modified externally
+
+    for (const tab of fileExplorer.openTabs) {
+      try {
+        const res = await fetch(`/api/files/read?workspace=${encodeURIComponent(tab.workspacePath)}&path=${encodeURIComponent(tab.path)}`);
+        if (!res.ok) continue;
+
+        const data = await res.json();
+
+        // Check if file was modified externally
+        if (data.modTime && data.modTime !== tab.modTime) {
+          if (tab.dirty) {
+            dirtyChanges.push({ tab, data });
+          } else {
+            cleanChanges.push({ tab, data });
+          }
+        }
+      } catch (err) {
+        // File might have been deleted - ignore
+      }
+    }
+
+    // Silently reload files without local changes (no flicker - only update if content differs)
+    for (const { tab, data } of cleanChanges) {
+      if (tab.content !== data.content) {
+        tab.content = data.content;
+        tab.originalContent = data.content;
+        tab.modTime = data.modTime;
+
+        // Only update editor if this is the active tab
+        if (fileExplorer.activeTabPath === tab.path && fileExplorer.editor) {
+          const cursor = fileExplorer.editor.getCursor();
+          const scrollInfo = fileExplorer.editor.getScrollInfo();
+          fileExplorer.editor.setValue(data.content);
+          fileExplorer.editor.setCursor(cursor);
+          fileExplorer.editor.scrollTo(scrollInfo.left, scrollInfo.top);
+        }
+      } else {
+        // Content same, just update modTime
+        tab.modTime = data.modTime;
+      }
+    }
+
+    // Batch prompt for files with local changes
+    if (dirtyChanges.length > 0) {
+      const fileNames = dirtyChanges.map(c => c.tab.name).join(', ');
+      const msg = dirtyChanges.length === 1
+        ? `"${dirtyChanges[0].tab.name}" was modified externally. Reload and lose local changes?`
+        : `${dirtyChanges.length} files were modified externally (${fileNames}). Reload all and lose local changes?`;
+
+      if (confirm(msg)) {
+        for (const { tab, data } of dirtyChanges) {
+          tab.content = data.content;
+          tab.originalContent = data.content;
+          tab.modTime = data.modTime;
+          tab.dirty = false;
+
+          if (fileExplorer.activeTabPath === tab.path && fileExplorer.editor) {
+            fileExplorer.editor.setValue(data.content);
+            fileExplorer.editor.clearHistory();
+          }
+        }
+        renderTabs();
+      } else {
+        // User declined - update modTime to avoid repeated prompts
+        for (const { tab, data } of dirtyChanges) {
+          tab.modTime = data.modTime;
+        }
+      }
+    }
+  }, fileExplorer.FILE_WATCH_INTERVAL);
+}
+
+function stopFileWatching() {
+  if (fileExplorer.fileWatchTimer) {
+    clearInterval(fileExplorer.fileWatchTimer);
+    fileExplorer.fileWatchTimer = null;
+  }
+}
+
+// Explorer tree auto-refresh
+function startTreeRefresh() {
+  if (fileExplorer.treeRefreshTimer) return;
+
+  fileExplorer.treeRefreshTimer = setInterval(() => {
+    refreshFileTree();
+  }, fileExplorer.TREE_REFRESH_INTERVAL);
+}
+
+function stopTreeRefresh() {
+  if (fileExplorer.treeRefreshTimer) {
+    clearInterval(fileExplorer.treeRefreshTimer);
+    fileExplorer.treeRefreshTimer = null;
+  }
+}
+
+// Cache for tree structure comparison
+let lastTreeHash = '';
+
+function hashTree(entries) {
+  // Create a simple hash of the tree structure (paths only, not content)
+  const paths = [];
+  function collectPaths(items, prefix = '') {
+    for (const item of items) {
+      paths.push(prefix + item.name + (item.isDir ? '/' : ''));
+      if (item.children) {
+        collectPaths(item.children, prefix + item.name + '/');
+      }
+    }
+  }
+  collectPaths(entries);
+  return paths.sort().join('|');
+}
+
+async function refreshFileTree() {
+  const workspacePath = appState.data?.workspace?.path;
+  if (!workspacePath || !fileExplorer.fileTree) return;
+
+  try {
+    const res = await fetch(`/api/files/tree?workspace=${encodeURIComponent(workspacePath)}`);
+    if (!res.ok) return;
+
+    const entries = await res.json();
+
+    // Check if tree structure actually changed
+    const newHash = hashTree(entries);
+    if (newHash === lastTreeHash) {
+      return; // No changes, skip re-render to avoid flicker
+    }
+    lastTreeHash = newHash;
+
+    // Remember expanded folders
+    const expandedPaths = new Set();
+    fileExplorer.fileTree.querySelectorAll('.file-tree-item.expanded').forEach(el => {
+      if (el.dataset.path) expandedPaths.add(el.dataset.path);
+    });
+    const rootExpanded = fileExplorer.fileTree.querySelector('.file-tree-root.expanded') !== null;
+
+    // Re-render tree
+    renderFileTree(entries, workspacePath);
+
+    // Restore expanded state
+    if (rootExpanded) {
+      const rootItem = fileExplorer.fileTree.querySelector('.file-tree-root');
+      const rootContents = fileExplorer.fileTree.querySelector('.file-tree-folder-contents');
+      if (rootItem && rootContents) {
+        rootItem.classList.add('expanded');
+        rootContents.classList.add('expanded');
+        const chevron = rootItem.querySelector('.expand-icon');
+        if (chevron) {
+          chevron.setAttribute('data-lucide', 'chevron-down');
+        }
+      }
+    }
+
+    // Restore folder expansions
+    expandedPaths.forEach(path => {
+      const item = fileExplorer.fileTree.querySelector(`.file-tree-item[data-path="${path}"]`);
+      if (item && !item.classList.contains('expanded')) {
+        item.click();
+      }
+    });
+
+    // Re-select active file
+    if (fileExplorer.activeTabPath) {
+      revealFileInTree(fileExplorer.activeTabPath);
+    }
+
+    lucide.createIcons({ nodes: [fileExplorer.fileTree] });
+  } catch (err) {
+    console.error('Failed to refresh file tree:', err);
+  }
+}
+
+// Show editor pane (when files are opened)
+function showEditorPane() {
+  if (fileExplorer.editorPane) {
+    fileExplorer.editorPane.classList.remove('hidden');
+  }
+  if (fileExplorer.paneResizeHandle) {
+    fileExplorer.paneResizeHandle.classList.remove('hidden');
+  }
+  if (fileExplorer.editorTabsSection) {
+    fileExplorer.editorTabsSection.classList.remove('hidden');
+  }
+  // Show expand button in chat pane header if it was hidden
+  if (fileExplorer.expandEditorBtn) {
+    fileExplorer.expandEditorBtn.classList.add('hidden');
+  }
+}
+
+// Hide editor pane (when all files closed)
+function hideEditorPane() {
+  if (fileExplorer.editorPane) {
+    fileExplorer.editorPane.classList.add('hidden');
+  }
+  if (fileExplorer.paneResizeHandle) {
+    fileExplorer.paneResizeHandle.classList.add('hidden');
+  }
+  if (fileExplorer.editorTabsSection) {
+    fileExplorer.editorTabsSection.classList.add('hidden');
+  }
+}
+
+// Collapse editor pane (user action - keeps tabs in toolbar)
+function collapseEditorPane() {
+  if (fileExplorer.editorPane) {
+    fileExplorer.editorPane.classList.add('collapsed');
+  }
+  if (fileExplorer.paneResizeHandle) {
+    fileExplorer.paneResizeHandle.classList.add('hidden');
+  }
+  if (fileExplorer.expandEditorBtn) {
+    fileExplorer.expandEditorBtn.classList.remove('hidden');
+  }
+}
+
+// Expand editor pane (user action)
+function expandEditorPane() {
+  if (fileExplorer.editorPane) {
+    fileExplorer.editorPane.classList.remove('collapsed');
+  }
+  if (fileExplorer.paneResizeHandle) {
+    fileExplorer.paneResizeHandle.classList.remove('hidden');
+  }
+  if (fileExplorer.expandEditorBtn) {
+    fileExplorer.expandEditorBtn.classList.add('hidden');
+  }
+  // Refresh editor if exists
+  if (fileExplorer.editor) {
+    setTimeout(() => fileExplorer.editor.refresh(), 0);
+  }
+}
+
+// Collapse chat pane (user action)
+function collapseChatPane() {
+  if (fileExplorer.chatPane) {
+    fileExplorer.chatPane.classList.add('collapsed');
+  }
+  if (fileExplorer.paneResizeHandle) {
+    fileExplorer.paneResizeHandle.classList.add('hidden');
+  }
+  if (fileExplorer.expandChatBtn) {
+    fileExplorer.expandChatBtn.classList.remove('hidden');
+  }
+  // Clear any inline width so editor pane expands to fill space
+  if (fileExplorer.editorPane) {
+    fileExplorer.editorPane.style.width = '';
+  }
+}
+
+// Expand chat pane (user action)
+function expandChatPane() {
+  if (fileExplorer.chatPane) {
+    fileExplorer.chatPane.classList.remove('collapsed');
+  }
+  // Only show resize handle if editor pane is also visible
+  if (fileExplorer.paneResizeHandle && fileExplorer.editorPane &&
+      !fileExplorer.editorPane.classList.contains('hidden') &&
+      !fileExplorer.editorPane.classList.contains('collapsed')) {
+    fileExplorer.paneResizeHandle.classList.remove('hidden');
+  }
+  if (fileExplorer.expandChatBtn) {
+    fileExplorer.expandChatBtn.classList.add('hidden');
+  }
+}
+
+// Save open tabs to localStorage
+function saveOpenTabs() {
+  if (!appState.data?.workspace?.path) return;
+  const workspacePath = appState.data.workspace.path;
+  const tabsData = fileExplorer.openTabs.map(t => ({
+    path: t.path,
+    name: t.name,
+  }));
+  const key = `cando_tabs_${workspacePath}`;
+  localStorage.setItem(key, JSON.stringify({
+    tabs: tabsData,
+    activeTab: fileExplorer.activeTabPath,
+  }));
+}
+
+// Restore open tabs from localStorage
+async function restoreOpenTabs() {
+  if (!appState.data?.workspace?.path) return;
+  const workspacePath = appState.data.workspace.path;
+  const key = `cando_tabs_${workspacePath}`;
+  const saved = localStorage.getItem(key);
+  if (!saved) return;
+
+  try {
+    const data = JSON.parse(saved);
+    if (!data.tabs || !Array.isArray(data.tabs)) return;
+
+    // Open each tab
+    for (const tab of data.tabs) {
+      await openFile(tab.path, tab.name, workspacePath);
+    }
+
+    // Switch to active tab if specified
+    if (data.activeTab && fileExplorer.openTabs.some(t => t.path === data.activeTab)) {
+      switchToTab(data.activeTab);
+    }
+  } catch (err) {
+    console.error('Failed to restore tabs:', err);
+  }
+}
+
+// For backward compatibility - now just focuses chat pane
+function switchToChatView() {
+  // With split panes, both are visible - just ensure chat is not collapsed
+  expandChatPane();
+}
+
+// Hook into project switching to reload file tree
+const originalSwitchWorkspace = typeof switchWorkspace === 'function' ? switchWorkspace : null;

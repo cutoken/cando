@@ -96,6 +96,549 @@ textarea {
   height: 100vh;
 }
 
+/* ============================================
+   Main Layout - File Explorer + Content
+   ============================================ */
+.main-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* File Explorer Sidebar */
+.file-sidebar {
+  width: 200px;
+  min-width: 140px;
+  max-width: 320px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease, margin 0.2s ease;
+}
+
+.file-sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  margin-left: -1px;
+  overflow: hidden;
+}
+
+.file-sidebar.collapsed + .sidebar-resize-handle {
+  display: none;
+}
+
+/* Sidebar Resize Handle */
+.sidebar-resize-handle {
+  width: 4px;
+  background: transparent;
+  cursor: col-resize;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.dragging {
+  background: var(--accent);
+}
+
+/* Expand Sidebar Button (in toolbar) */
+.toolbar-icon-btn.expand-sidebar-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.25rem;
+}
+
+.toolbar-icon-btn.expand-sidebar-btn:hover {
+  background: var(--bg-panel-alt);
+  color: var(--text);
+}
+
+.toolbar-icon-btn.expand-sidebar-btn i {
+  width: 18px;
+  height: 18px;
+}
+
+.toolbar-icon-btn.expand-sidebar-btn.hidden {
+  display: none;
+}
+
+/* Sidebar collapse button (floating top-right) */
+.sidebar-collapse-btn {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 5;
+}
+
+.file-sidebar {
+  position: relative;
+}
+
+.file-sidebar:hover .sidebar-collapse-btn {
+  opacity: 1;
+}
+
+.sidebar-collapse-btn:hover {
+  background: var(--bg-panel-alt);
+  color: var(--text);
+}
+
+.sidebar-collapse-btn i {
+  width: 14px;
+  height: 14px;
+}
+
+.icon-btn-sm {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn-sm:hover {
+  background: var(--bg-panel-alt);
+  color: var(--text);
+}
+
+.icon-btn-sm i {
+  width: 16px;
+  height: 16px;
+}
+
+/* Explorer Toolbar */
+.explorer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.explorer-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.explorer-toolbar-btn:hover {
+  background: var(--bg-panel-alt);
+  color: var(--text);
+}
+
+.explorer-toolbar-btn i {
+  width: 18px;
+  height: 18px;
+}
+
+/* File Tree */
+.file-tree {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.25rem 0;
+  font-size: 0.75rem;
+}
+
+.file-tree-item {
+  display: flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-tree-item:hover {
+  background: var(--bg-panel-alt);
+}
+
+.file-tree-item.selected {
+  background: var(--accent-soft);
+}
+
+.file-tree-item i {
+  width: 14px;
+  height: 14px;
+  margin-right: 0.35rem;
+  flex-shrink: 0;
+}
+
+.file-tree-item .expand-icon {
+  width: 12px;
+  height: 12px;
+  margin-right: 0.2rem;
+}
+
+/* Root project node (VS Code style) */
+.file-tree-root {
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  padding: 0.4rem 0.75rem;
+  color: var(--text-secondary);
+}
+
+.file-tree-root:hover {
+  color: var(--text);
+}
+
+.file-tree-root .root-name {
+  text-transform: uppercase;
+}
+
+.file-tree-root .expand-icon {
+  color: var(--text-secondary);
+}
+
+.file-tree-folder-contents {
+  display: none;
+}
+
+.file-tree-folder-contents.expanded {
+  display: block;
+}
+
+/* Depth-based indentation (items under project root) */
+.file-tree-item[data-depth="0"] { padding-left: 0.75rem; }
+.file-tree-item[data-depth="1"] { padding-left: 1.25rem; }
+.file-tree-item[data-depth="2"] { padding-left: 1.75rem; }
+.file-tree-item[data-depth="3"] { padding-left: 2.25rem; }
+.file-tree-item[data-depth="4"] { padding-left: 2.75rem; }
+.file-tree-item[data-depth="5"] { padding-left: 3.25rem; }
+
+.file-tree-empty {
+  padding: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* Content Area */
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  position: relative;
+}
+
+/* Split Pane Container */
+.split-pane-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Pane Base Styles */
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pane.hidden {
+  display: none;
+}
+
+/* Editor Pane (left) */
+.editor-pane {
+  position: relative;
+  flex: 1;
+  min-width: 250px;
+  border-right: 1px solid var(--border);
+}
+
+.editor-pane.collapsed {
+  display: none;
+}
+
+/* Chat Pane (right) */
+.chat-pane {
+  position: relative;
+  flex: 1;
+  min-width: 300px;
+}
+
+.chat-pane.collapsed {
+  display: none;
+}
+
+/* Pane floating icon buttons */
+.pane-icon-btn {
+  position: absolute;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 5;
+}
+
+.pane:hover .pane-icon-btn {
+  opacity: 1;
+}
+
+.pane-icon-btn:hover {
+  background: var(--bg-panel-alt);
+  color: var(--text);
+}
+
+.pane-icon-btn i {
+  width: 14px;
+  height: 14px;
+}
+
+.pane-icon-btn.hidden {
+  display: none;
+}
+
+/* Editor pane collapse button (top-right) */
+.editor-collapse-btn {
+  top: 0.25rem;
+  right: 0.25rem;
+}
+
+/* Chat pane buttons (top corners) */
+.chat-expand-btn {
+  top: 0.25rem;
+  left: 0.25rem;
+}
+
+.chat-collapse-btn {
+  top: 0.25rem;
+  right: 0.25rem;
+}
+
+/* Pane Resize Handle */
+.pane-resize-handle {
+  width: 4px;
+  background: var(--border);
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.pane-resize-handle:hover,
+.pane-resize-handle.dragging {
+  background: var(--accent);
+}
+
+.pane-resize-handle.hidden {
+  display: none;
+}
+
+/* Expand Chat Button (when chat collapsed) */
+.expand-chat-btn {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  z-index: 10;
+}
+
+.expand-chat-btn:hover {
+  background: var(--bg-panel-alt);
+  color: var(--text);
+}
+
+.expand-chat-btn.hidden {
+  display: none;
+}
+
+.expand-chat-btn i {
+  width: 20px;
+  height: 20px;
+}
+
+/* Editor Tabs Section (inline in toolbar) */
+.editor-tabs-section {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.editor-tabs-section.hidden {
+  display: none;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 0.5rem;
+  flex-shrink: 0;
+}
+
+.editor-tabs {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.editor-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--bg-panel-alt);
+  border: none;
+  border-radius: 4px;
+  margin-right: 0.25rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  transition: background 0.15s;
+}
+
+.editor-tab:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.editor-tab.active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.editor-tab .tab-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.editor-tab .tab-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-tab .tab-dirty {
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  display: none;
+}
+
+.editor-tab.dirty .tab-dirty {
+  display: block;
+}
+
+.editor-tab .tab-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.125rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.editor-tab:hover .tab-close,
+.editor-tab.active .tab-close {
+  opacity: 1;
+}
+
+.editor-tab .tab-close:hover {
+  background: var(--danger);
+  color: white;
+}
+
+.editor-tab .tab-close i {
+  width: 12px;
+  height: 12px;
+}
+
+.editor-tabs-overflow {
+  position: relative;
+  padding: 0 0.5rem;
+}
+
+.editor-tabs-overflow .overflow-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 200px;
+  z-index: 100;
+}
+
+/* Editor Container */
+.editor-container {
+  flex: 1;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* CodeMirror 5 styling */
+.editor-container .CodeMirror {
+  height: 100%;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  background: var(--bg);
+}
+
 .sidebar,
 .conversation-panel {
   position: relative;
@@ -877,6 +1420,11 @@ button.danger:hover {
   border: none;
 }
 
+/* Active view indicator for chat picker */
+.chat-picker-btn.active-view {
+  background: var(--accent-soft);
+}
+
 .chat-controls-divider {
   width: 1px;
   height: 1.2rem;
@@ -891,6 +1439,32 @@ button.danger:hover {
 
 .chat-controls-group .new-chat-btn:hover {
   border: none;
+}
+
+/* Chat dropdown container and button */
+.chat-dropdown-container {
+  position: relative;
+}
+
+.chat-dropdown-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.4rem;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.chat-dropdown-btn:hover {
+  background: var(--bg-panel-alt);
+  color: var(--text);
+}
+
+.chat-dropdown-btn i {
+  width: 14px;
+  height: 14px;
 }
 
 .project-dropdown-menu {

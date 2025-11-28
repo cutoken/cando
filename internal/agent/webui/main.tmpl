@@ -8,7 +8,131 @@
 </head>
 <body>
   <div class="app-shell">
-    {{template "chat" .}}
+    <!-- Top Toolbar (full width) -->
+    <div class="message-toolbar">
+      <!-- Expand Sidebar Button (shown when sidebar collapsed) -->
+      <button id="expandSidebarBtn" class="toolbar-icon-btn expand-sidebar-btn hidden" title="Show Explorer">
+        <i data-lucide="panel-left-open"></i>
+      </button>
+
+      <!-- Project Picker: [📁 name ▼] -->
+      <div class="project-picker-container">
+        <button id="projectPickerBtn" class="project-picker-btn" title="Switch Project">
+          <i data-lucide="folder" class="picker-icon"></i>
+          <span id="currentProjectName" class="picker-label">No Project</span>
+          <i data-lucide="chevron-down" class="chevron"></i>
+        </button>
+        <!-- Project Dropdown Menu -->
+        <div id="projectMenu" class="project-dropdown-menu hidden">
+          <div class="project-menu-section">
+            <div id="projectMenuList" class="project-menu-items"></div>
+          </div>
+          <div class="project-menu-section project-menu-actions">
+            <button id="newProjectMenuBtn" class="project-menu-action">
+              <i data-lucide="folder-plus"></i>
+              <span>New Project</span>
+            </button>
+            <button id="openFolderMenuBtn" class="project-menu-action">
+              <i data-lucide="folder-open"></i>
+              <span>Open Project</span>
+            </button>
+          </div>
+          <div class="project-menu-section project-menu-settings">
+            <button id="projectSettingsMenuBtn" class="project-menu-action">
+              <i data-lucide="settings"></i>
+              <span>Project Settings</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Controls: [ 💬 chat-1 | + | ▼ ] -->
+      <div class="chat-controls-group">
+        <!-- Chat view button (switches to chat view) -->
+        <button id="chatPickerBtn" class="chat-picker-btn" title="Switch to Chat">
+          <i data-lucide="message-circle" class="picker-icon"></i>
+          <span id="currentChatLabel" class="picker-label">chat-1</span>
+        </button>
+        <div class="chat-controls-divider"></div>
+        <!-- New chat button -->
+        <button id="newChatBtn" class="new-chat-btn" title="New Chat">
+          <i data-lucide="plus"></i>
+        </button>
+        <div class="chat-controls-divider"></div>
+        <!-- Chat dropdown button -->
+        <div class="chat-dropdown-container">
+          <button id="chatDropdownBtn" class="chat-dropdown-btn" title="Switch Chat">
+            <i data-lucide="chevron-down"></i>
+          </button>
+          <div id="chatMenu" class="chat-dropdown-menu hidden">
+            <div id="chatMenuList" class="chat-menu-items"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Editor Tabs (inline in toolbar) -->
+      <div id="editorTabsSection" class="editor-tabs-section hidden">
+        <div class="toolbar-divider"></div>
+        <div id="editorTabs" class="editor-tabs"></div>
+        <div id="editorTabsOverflow" class="editor-tabs-overflow hidden">
+          <button class="icon-btn-sm" title="More tabs">
+            <i data-lucide="chevron-down"></i>
+          </button>
+          <div class="overflow-menu hidden"></div>
+        </div>
+      </div>
+
+      <div id="messageBanner" class="feed-banner hidden"></div>
+    </div>
+
+    <div class="main-layout">
+      <!-- File Explorer Sidebar -->
+      <aside id="fileSidebar" class="file-sidebar">
+        <button id="collapseSidebarBtn" class="sidebar-collapse-btn" title="Collapse Explorer">
+          <i data-lucide="panel-left-close"></i>
+        </button>
+        <div class="explorer-toolbar">
+          <button id="newFileBtn" class="explorer-toolbar-btn" title="New File">
+            <i data-lucide="file-plus"></i>
+          </button>
+          <button id="newFolderBtn" class="explorer-toolbar-btn" title="New Folder">
+            <i data-lucide="folder-plus"></i>
+          </button>
+          <button id="revealInExplorerBtn" class="explorer-toolbar-btn" title="Open in File Explorer">
+            <i data-lucide="external-link"></i>
+          </button>
+        </div>
+        <div id="fileTree" class="file-tree"></div>
+      </aside>
+
+      <!-- Sidebar Resize Handle -->
+      <div id="sidebarResizeHandle" class="sidebar-resize-handle"></div>
+
+      <!-- Main Content Area -->
+      <div class="content-area">
+        <!-- Conversation Panel (includes editor when files open) -->
+        {{template "chat" .}}
+      </div>
+    </div>
+
+    <!-- Composer (full width at bottom) -->
+    <form id="promptForm" class="composer">
+      <div class="input-wrapper">
+        <button type="button" id="helpBtn" class="icon-btn help-btn" title="Help">
+          <i data-lucide="help-circle"></i>
+        </button>
+        <button type="button" id="settingsBtn" class="icon-btn settings-btn" title="Settings">
+          <i data-lucide="settings"></i>
+        </button>
+        <textarea id="promptInput" placeholder="Ask Cando anything… (Enter to send, Shift+Enter for new line)" rows="1"></textarea>
+        <button type="button" id="attachBtn" class="icon-btn attach-btn" title="Attach files">
+          <i data-lucide="paperclip"></i>
+        </button>
+        <input type="file" id="fileInput" multiple style="display: none;" />
+        <button type="button" id="cancelBtn" class="ghost stop-btn">Cancel</button>
+        <button type="submit" id="sendBtn" class="primary send-btn">Send</button>
+      </div>
+    </form>
   </div>
 
   <!-- Bottom status bar removed - moved to CANDO bar and input bar
@@ -319,6 +443,23 @@
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js" defer></script>
+  <!-- CodeMirror 5 for code editing -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/material-darker.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/xml/xml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/css/css.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/markdown/markdown.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/go/go.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/shell/shell.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/yaml/yaml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/sql/sql.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/mode/simple.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/rust/rust.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/clike/clike.min.js"></script>
   <script src="/alpine.js" defer></script>
   <script src="/lucide.js"></script>
   <script src="/app.js" defer></script>

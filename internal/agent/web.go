@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -147,6 +148,12 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/restart", s.handleRestart)
 	mux.HandleFunc("/api/update/dismiss", s.handleUpdateDismiss)
 	mux.HandleFunc("/api/telemetry", s.handleTelemetry)
+	mux.HandleFunc("/api/files/tree", s.handleFilesTree)
+	mux.HandleFunc("/api/files/read", s.handleFilesRead)
+	mux.HandleFunc("/api/files/save", s.handleFilesSave)
+	mux.HandleFunc("/api/files/create", s.handleFilesCreate)
+	mux.HandleFunc("/api/files/mkdir", s.handleFilesMkdir)
+	mux.HandleFunc("/api/files/reveal", s.handleFilesReveal)
 
 	server := &http.Server{
 		Addr:    actualAddr,
@@ -2056,6 +2063,379 @@ func (s *webServer) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 	analytics.TrackPageView()
 
 	s.writeJSON(w, r, map[string]string{"status": "ok"})
+}
+
+// FileTreeEntry represents a file or directory in the tree
+type FileTreeEntry struct {
+	Name     string          `json:"name"`
+	Path     string          `json:"path"`
+	IsDir    bool            `json:"isDir"`
+	Children []FileTreeEntry `json:"children,omitempty"`
+}
+
+func (s *webServer) handleFilesTree(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	workspacePath := r.URL.Query().Get("workspace")
+	if workspacePath == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace parameter required")
+		return
+	}
+
+	// Validate workspace path exists
+	info, err := os.Stat(workspacePath)
+	if err != nil || !info.IsDir() {
+		s.respondError(w, r, http.StatusBadRequest, "invalid workspace path")
+		return
+	}
+
+	// Build the file tree (limited depth to avoid huge responses)
+	tree, err := s.buildFileTree(workspacePath, workspacePath, 0, 5)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to read directory: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, tree)
+}
+
+func (s *webServer) buildFileTree(basePath, currentPath string, depth, maxDepth int) ([]FileTreeEntry, error) {
+	if depth >= maxDepth {
+		return []FileTreeEntry{}, nil
+	}
+
+	entries, err := os.ReadDir(currentPath)
+	if err != nil {
+		return nil, err
+	}
+
+	result := []FileTreeEntry{}
+	for _, entry := range entries {
+		name := entry.Name()
+
+		// Skip large/generated directories only
+		if entry.IsDir() {
+			switch name {
+			case "node_modules", "vendor", "__pycache__", ".git", ".svn", ".hg", ".next", ".nuxt", "target", "bin", "obj":
+				continue
+			}
+		}
+
+		fullPath := filepath.Join(currentPath, name)
+		relPath, _ := filepath.Rel(basePath, fullPath)
+
+		item := FileTreeEntry{
+			Name:  name,
+			Path:  relPath,
+			IsDir: entry.IsDir(),
+		}
+
+		if entry.IsDir() {
+			children, err := s.buildFileTree(basePath, fullPath, depth+1, maxDepth)
+			if err == nil {
+				item.Children = children
+			}
+		}
+
+		result = append(result, item)
+	}
+
+	// Sort: directories first, then alphabetically
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].IsDir != result[j].IsDir {
+			return result[i].IsDir
+		}
+		return strings.ToLower(result[i].Name) < strings.ToLower(result[j].Name)
+	})
+
+	return result, nil
+}
+
+func (s *webServer) handleFilesRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	workspacePath := r.URL.Query().Get("workspace")
+	filePath := r.URL.Query().Get("path")
+
+	if workspacePath == "" || filePath == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace and path parameters required")
+		return
+	}
+
+	// Construct full path and validate it's within workspace
+	fullPath := filepath.Join(workspacePath, filePath)
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(workspacePath)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check file exists and is not a directory
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		s.respondError(w, r, http.StatusNotFound, "file not found")
+		return
+	}
+	if info.IsDir() {
+		s.respondError(w, r, http.StatusBadRequest, "cannot read directory")
+		return
+	}
+
+	// Check file size (limit to 1MB)
+	if info.Size() > 1024*1024 {
+		s.respondError(w, r, http.StatusBadRequest, "file too large (max 1MB)")
+		return
+	}
+
+	// Read file content
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to read file: %v", err))
+		return
+	}
+
+	// Detect if binary
+	isBinary := false
+	for _, b := range content[:min(512, len(content))] {
+		if b == 0 {
+			isBinary = true
+			break
+		}
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"path":     filePath,
+		"content":  string(content),
+		"isBinary": isBinary,
+		"size":     info.Size(),
+		"modTime":  info.ModTime().Unix(),
+	})
+}
+
+func (s *webServer) handleFilesSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		Path      string `json:"path"`
+		Content   string `json:"content"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" || req.Path == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace and path required")
+		return
+	}
+
+	// Construct full path and validate it's within workspace
+	fullPath := filepath.Join(req.Workspace, req.Path)
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(req.Workspace)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(fullPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+
+	// Write file
+	if err := os.WriteFile(fullPath, []byte(req.Content), 0644); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to write file: %v", err))
+		return
+	}
+
+	// Get updated file info
+	info, _ := os.Stat(fullPath)
+	modTime := int64(0)
+	if info != nil {
+		modTime = info.ModTime().Unix()
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status":  "saved",
+		"path":    req.Path,
+		"modTime": modTime,
+	})
+}
+
+func (s *webServer) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		Path      string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" || req.Path == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace and path required")
+		return
+	}
+
+	fullPath := filepath.Join(req.Workspace, req.Path)
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(req.Workspace)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check if file already exists
+	if _, err := os.Stat(fullPath); err == nil {
+		s.respondError(w, r, http.StatusConflict, "file already exists")
+		return
+	}
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(fullPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+
+	// Create empty file
+	if err := os.WriteFile(fullPath, []byte{}, 0644); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create file: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status": "created",
+		"path":   req.Path,
+	})
+}
+
+func (s *webServer) handleFilesMkdir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		Path      string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" || req.Path == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace and path required")
+		return
+	}
+
+	fullPath := filepath.Join(req.Workspace, req.Path)
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(req.Workspace)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check if directory already exists
+	if info, err := os.Stat(fullPath); err == nil && info.IsDir() {
+		s.respondError(w, r, http.StatusConflict, "directory already exists")
+		return
+	}
+
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status": "created",
+		"path":   req.Path,
+	})
+}
+
+func (s *webServer) handleFilesReveal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		Path      string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace required")
+		return
+	}
+
+	// If path is empty, reveal the workspace folder itself
+	fullPath := req.Workspace
+	if req.Path != "" {
+		fullPath = filepath.Join(req.Workspace, req.Path)
+	}
+	fullPath = filepath.Clean(fullPath)
+
+	if !strings.HasPrefix(fullPath, filepath.Clean(req.Workspace)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check if path exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		s.respondError(w, r, http.StatusNotFound, "path not found")
+		return
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", "-R", fullPath)
+	case "windows":
+		cmd = exec.Command("explorer", "/select,", fullPath)
+	default: // linux and others
+		// xdg-open opens the parent directory for files
+		cmd = exec.Command("xdg-open", filepath.Dir(fullPath))
+	}
+
+	if err := cmd.Start(); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to open explorer: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status": "opened",
+		"path":   req.Path,
+	})
 }
 
 func (s *webServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
