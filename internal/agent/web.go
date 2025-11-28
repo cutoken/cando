@@ -909,6 +909,7 @@ type sessionPayload struct {
 	CurrentProvider       string            `json:"current_provider,omitempty"`
 	OpenRouterFreeMode    bool              `json:"openrouter_free_mode,omitempty"`
 	AnalyticsEnabled      bool              `json:"analytics_enabled"`
+	ContextProfile        string            `json:"context_profile,omitempty"`
 	Plan                  *planSnapshot     `json:"plan,omitempty"`
 	PlanError             string            `json:"plan_error,omitempty"`
 	Workdir               string            `json:"workdir,omitempty"`
@@ -1008,8 +1009,8 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 	activeModel := s.agent.getActiveModel()
 
 	payload := sessionPayload{
-		Thinking:              s.agent.thinkingEnabled,
-		ForceThinking:         s.agent.forceThinking,
+		Thinking:              s.agent.cfg.ThinkingEnabled,  // Use config value, not agent cache
+		ForceThinking:         s.agent.cfg.ForceThinking,    // Use config value, not agent cache
 		SystemPrompt:          s.agent.cfg.SystemPrompt,
 		Running:               s.agent.HasInFlightRequest(),
 		TotalTokens:           s.agent.getTotalTokens(),
@@ -1022,6 +1023,14 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 		CurrentProvider:       currentProvider,
 		OpenRouterFreeMode:    s.agent.cfg.OpenRouterFreeMode,
 		AnalyticsEnabled:      s.agent.cfg.IsAnalyticsEnabled(),
+		ContextProfile:        s.agent.cfg.ContextProfile,   // Add missing field for profile dropdown
+		Config: &configSnapshot{  // Global config should always be available
+			ContextProfile:             s.agent.cfg.ContextProfile,
+			ContextMessagePercent:      s.agent.cfg.ContextMessagePercent,
+			ContextConversationPercent: s.agent.cfg.ContextTotalPercent,
+			ContextProtectRecent:       s.agent.cfg.ContextProtectRecent,
+			SystemPrompt:               s.agent.cfg.SystemPrompt,
+		},
 	}
 	if s.workspaceManager != nil {
 		payload.Workspaces = s.workspaceManager.List()
@@ -1057,13 +1066,6 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 	payload.ContextChars = conversationCharCount(messages)
 	payload.Plan = plan
 	payload.Workdir = wsCtx.root
-	payload.Config = &configSnapshot{
-		ContextProfile:             s.agent.cfg.ContextProfile,
-		ContextMessagePercent:      s.agent.cfg.ContextMessagePercent,
-		ContextConversationPercent: s.agent.cfg.ContextTotalPercent,
-		ContextProtectRecent:       s.agent.cfg.ContextProtectRecent,
-		SystemPrompt:               s.agent.cfg.SystemPrompt,
-	}
 	if planErr != nil {
 		payload.PlanError = planErr.Error()
 	}
