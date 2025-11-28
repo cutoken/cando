@@ -120,10 +120,16 @@ func EnsureDefaultConfig(provider string) error {
 		cfg.SummaryModel = defaults.Summary
 		cfg.VLModel = defaults.VL
 	} else {
-		// Fall back to openrouter defaults
-		cfg.Model = ProviderDefaults["openrouter"].Main
-		cfg.SummaryModel = ProviderDefaults["openrouter"].Summary
-		cfg.VLModel = ProviderDefaults["openrouter"].VL
+		// Fall back to openrouter defaults for unknown providers
+		orDefaults := ProviderDefaults["openrouter"]
+		cfg.Model = orDefaults.Main
+		cfg.SummaryModel = orDefaults.Summary
+		cfg.VLModel = orDefaults.VL
+		
+		// Also add the unknown provider to the maps with OpenRouter defaults
+		cfg.ProviderModels[provider] = orDefaults.Main
+		cfg.ProviderSummaryModels[provider] = orDefaults.Summary
+		cfg.ProviderVLModels[provider] = orDefaults.VL
 	}
 
 	// ZAI-specific base URL
