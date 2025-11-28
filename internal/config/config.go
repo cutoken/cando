@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"cando/internal/config/migrate"
 	"cando/internal/prompts"
 	"gopkg.in/yaml.v3"
 )
@@ -43,10 +44,52 @@ func KnownProviders() []string {
 	return []string{"zai", "openrouter", "mock"}
 }
 
+// DefaultConfig returns a config with all defaults set - SINGLE SOURCE OF TRUTH
+func DefaultConfig() Config {
+	cfg := Config{
+		ConfigVersion:         1, // Current version
+		Temperature:           0.7,
+		ThinkingEnabled:       true,
+		ForceThinking:         false,
+		ContextProfile:        "memory",
+		ContextMessagePercent: 0.02,
+		ContextTotalPercent:   0.80,
+		ContextProtectRecent:  2,
+		WorkspaceRoot:         ".",
+		SystemPrompt:          "",
+		RequestTimeoutSeconds: 90,
+		ShellTimeoutSeconds:   60,
+		CompactionPrompt:      DefaultCompactionPrompt,
+		ZAIBaseURL:            "https://api.z.ai/api/coding/paas/v4/chat/completions",
+		ZAIVisionURL:          "https://api.z.ai/api/coding/paas/v4/chat/completions",
+		OpenRouterBaseURL:     "https://openrouter.ai/api/v1",
+		OpenRouterVisionURL:   "https://openrouter.ai/api/v1/chat/completions",
+		ProviderModels:        make(map[string]string),
+		ProviderSummaryModels: make(map[string]string),
+		ProviderVLModels:      make(map[string]string),
+	}
+
+	// Populate all provider defaults
+	for _, p := range KnownProviders() {
+		defaults := ProviderDefaults[p]
+		cfg.ProviderModels[p] = defaults.Main
+		cfg.ProviderSummaryModels[p] = defaults.Summary
+		cfg.ProviderVLModels[p] = defaults.VL
+	}
+
+	// Set OpenRouter as default provider models
+	cfg.Model = ProviderDefaults["openrouter"].Main
+	cfg.SummaryModel = ProviderDefaults["openrouter"].Summary
+	cfg.VLModel = ProviderDefaults["openrouter"].VL
+
+	return cfg
+}
+
 // Config captures the tunable runtime settings for the agent.
 const DefaultCompactionPrompt = "Summarize the following text in 20 words or fewer. Return only the summary."
 
 type Config struct {
+	ConfigVersion         int               `yaml:"config_version"`
 	Model                 string            `yaml:"model"`
 	SummaryModel          string            `yaml:"summary_model"`
 	VLModel               string            `yaml:"vl_model"`
@@ -63,6 +106,9 @@ type Config struct {
 	ShellTimeoutSeconds   int               `yaml:"shell_timeout_seconds"`
 	ContextProfile        string            `yaml:"context_profile"`
 	ZAIBaseURL            string            `yaml:"zai_base_url"`
+	ZAIVisionURL          string            `yaml:"zai_vision_url"`
+	OpenRouterBaseURL     string            `yaml:"openrouter_base_url"`
+	OpenRouterVisionURL   string            `yaml:"openrouter_vision_url"`
 	ContextMessagePercent float64           `yaml:"context_message_percent"`
 	ContextTotalPercent   float64           `yaml:"context_conversation_percent"`
 	ContextProtectRecent  int               `yaml:"context_protect_recent"`
@@ -99,55 +145,24 @@ func EnsureDefaultConfig(provider string) error {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
-	cfg := Config{
-		ProviderModels:        make(map[string]string),
-		ProviderSummaryModels: make(map[string]string),
-		ProviderVLModels:      make(map[string]string),
-	}
+	// Start with defaults from single source of truth
+	cfg := DefaultConfig()
 
-	// Populate all provider defaults from the single source of truth
-	for _, p := range KnownProviders() {
-		defaults := ProviderDefaults[p]
-		cfg.ProviderModels[p] = defaults.Main
-		cfg.ProviderSummaryModels[p] = defaults.Summary
-		cfg.ProviderVLModels[p] = defaults.VL
-	}
-
-	// Set current model based on requested provider
+	// Override with provider-specific settings
 	provider = strings.ToLower(provider)
 	if defaults, ok := ProviderDefaults[provider]; ok {
 		cfg.Model = defaults.Main
 		cfg.SummaryModel = defaults.Summary
 		cfg.VLModel = defaults.VL
-	} else {
-		// Fall back to openrouter defaults for unknown providers
+	} else if provider != "" {
+		// Unknown provider - add it with OpenRouter defaults
 		orDefaults := ProviderDefaults["openrouter"]
-		cfg.Model = orDefaults.Main
-		cfg.SummaryModel = orDefaults.Summary
-		cfg.VLModel = orDefaults.VL
-		
-		// Also add the unknown provider to the maps with OpenRouter defaults
 		cfg.ProviderModels[provider] = orDefaults.Main
 		cfg.ProviderSummaryModels[provider] = orDefaults.Summary
 		cfg.ProviderVLModels[provider] = orDefaults.VL
 	}
 
-	// ZAI-specific base URL
-	if provider == "zai" {
-		cfg.ZAIBaseURL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-	}
-
-	// Apply standard defaults for other fields
-	cfg.Temperature = 0.7
-	cfg.ThinkingEnabled = true
-	cfg.ForceThinking = false
-	cfg.ContextProfile = "memory"
-	cfg.ContextMessagePercent = 0.02 // 2% of model context
-	cfg.ContextTotalPercent = 0.80   // 80% of model context
-	cfg.ContextProtectRecent = 2
-	cfg.CompactionPrompt = DefaultCompactionPrompt
-	cfg.WorkspaceRoot = "."
-	cfg.SystemPrompt = ""
+	// No provider-specific overrides - everything comes from DefaultConfig
 
 	// Write config file
 	data, err := yaml.Marshal(&cfg)
@@ -178,12 +193,31 @@ func EnsureAllProviderDefaults(configPath string) error {
 
 	// Track if any changes were made
 	var changes []string
-	
+
 	// Ensure thinking is enabled by default for existing configs
 	// This handles upgrades from older versions without the field
 	if !cfg.ThinkingEnabled && !cfg.ForceThinking {
 		cfg.ThinkingEnabled = true
 		changes = append(changes, "enabled thinking mode (default)")
+	}
+
+	// Ensure provider URLs are set
+	defaultCfg := DefaultConfig()
+	if cfg.ZAIBaseURL == "" {
+		cfg.ZAIBaseURL = defaultCfg.ZAIBaseURL
+		changes = append(changes, fmt.Sprintf("zai_base_url=%s", cfg.ZAIBaseURL))
+	}
+	if cfg.ZAIVisionURL == "" {
+		cfg.ZAIVisionURL = defaultCfg.ZAIVisionURL
+		changes = append(changes, fmt.Sprintf("zai_vision_url=%s", cfg.ZAIVisionURL))
+	}
+	if cfg.OpenRouterBaseURL == "" {
+		cfg.OpenRouterBaseURL = defaultCfg.OpenRouterBaseURL
+		changes = append(changes, fmt.Sprintf("openrouter_base_url=%s", cfg.OpenRouterBaseURL))
+	}
+	if cfg.OpenRouterVisionURL == "" {
+		cfg.OpenRouterVisionURL = defaultCfg.OpenRouterVisionURL
+		changes = append(changes, fmt.Sprintf("openrouter_vision_url=%s", cfg.OpenRouterVisionURL))
 	}
 
 	// Initialize maps if nil
@@ -251,10 +285,35 @@ func LoadUserConfig() (Config, error) {
 		configPath = filepath.Join(GetConfigDir(), "config.yaml")
 	}
 
-	// If file doesn't exist, return defaults
+	// Run migrations first (if config exists)
+	if _, err := os.Stat(configPath); err == nil {
+		if err := migrate.MigrateConfig(configPath); err != nil {
+			log.Printf("Warning: config migration failed: %v", err)
+			// Continue with unmigrated config
+		}
+	}
+
+	// If file doesn't exist, create it with defaults
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		cfg := Config{}
-		cfg.applyDefaults()
+		// Create config with defaults from single source of truth
+		cfg := DefaultConfig()
+
+		// Ensure directory exists
+		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+			return Config{}, fmt.Errorf("create config dir: %w", err)
+		}
+
+		// Write the default config
+		data, err := yaml.Marshal(&cfg)
+		if err != nil {
+			return Config{}, fmt.Errorf("marshal default config: %w", err)
+		}
+		if err := os.WriteFile(configPath, data, 0644); err != nil {
+			return Config{}, fmt.Errorf("write default config: %w", err)
+		}
+
+		// Apply computed values before returning
+		cfg.applyComputedPaths()
 		return cfg, nil
 	}
 
@@ -268,7 +327,7 @@ func LoadUserConfig() (Config, error) {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
 
-	cfg.applyDefaults()
+	cfg.applyComputedPaths()
 	cfg.cleanSystemPrompt()
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
@@ -288,7 +347,7 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
-	cfg.applyDefaults()
+	cfg.applyComputedPaths()
 	cfg.cleanSystemPrompt()
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
@@ -296,39 +355,12 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// applyDefaults fills in optional values to keep the YAML file concise.
-func (c *Config) applyDefaults() {
-	if c.BaseURL == "" {
-		c.BaseURL = "https://openrouter.ai/api/v1"
-	}
-	// Note: Model and SummaryModel defaults are handled by EnsureDefaultConfig()
-	// and provider-aware fallbacks in ModelFor()/SummaryModelFor() to avoid conflicts
-	if c.Temperature == 0 {
-		c.Temperature = 0.2
-	}
-	if c.RequestTimeoutSeconds <= 0 {
-		c.RequestTimeoutSeconds = 90
-	}
+// applyComputedPaths sets computed paths based on workspace root and config dir
+// This ONLY sets paths that are derived from other values, never user preferences
+func (c *Config) applyComputedPaths() {
+	// Only set computed paths if not already set
 	if c.ConversationDir == "" {
 		c.ConversationDir = filepath.Join(GetConfigDir(), "conversations")
-	}
-	if c.WorkspaceRoot == "" {
-		c.WorkspaceRoot = "."
-	}
-	if c.ShellTimeoutSeconds <= 0 {
-		c.ShellTimeoutSeconds = 60
-	}
-	if c.ContextProfile == "" {
-		c.ContextProfile = "default"
-	}
-	if c.ZAIBaseURL == "" {
-		c.ZAIBaseURL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-	}
-	if c.ContextMessagePercent <= 0 {
-		c.ContextMessagePercent = 0.02 // 2% default
-	}
-	if c.ContextTotalPercent <= 0 {
-		c.ContextTotalPercent = 0.80 // 80% default
 	}
 	if c.MemoryStorePath == "" {
 		root := c.WorkspaceRoot
@@ -343,12 +375,6 @@ func (c *Config) applyDefaults() {
 			root = "."
 		}
 		c.HistoryPath = filepath.Join(root, ".cando_history")
-	}
-	if strings.TrimSpace(c.CompactionPrompt) == "" {
-		c.CompactionPrompt = DefaultCompactionPrompt
-	}
-	if strings.TrimSpace(c.SummaryModel) == "" {
-		c.SummaryModel = ProviderDefaults["zai"].Summary
 	}
 }
 
@@ -467,13 +493,13 @@ func GetConfigDir() string {
 	if err != nil {
 		return ".cando"
 	}
-	
+
 	// Check if running as beta version
 	execName := filepath.Base(os.Args[0])
 	if strings.Contains(execName, "beta") {
 		return filepath.Join(home, ".cando-beta")
 	}
-	
+
 	return filepath.Join(home, ".cando")
 }
 
@@ -561,7 +587,14 @@ func Save(c Config) error {
 		configPath = filepath.Join(GetConfigDir(), "config.yaml")
 	}
 
-	data, err := yaml.Marshal(c)
+	// Clear runtime-calculated paths before saving
+	// These are set dynamically based on workspace and shouldn't be persisted
+	saveConfig := c
+	saveConfig.ConversationDir = ""
+	saveConfig.MemoryStorePath = ""
+	saveConfig.HistoryPath = ""
+
+	data, err := yaml.Marshal(saveConfig)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}

@@ -2496,8 +2496,13 @@ function getCurrentModel(provider, modelType) {
   const providers = appState.data?.providers || [];
   const activeProvider = providers.find(p => p.key === provider);
 
-  // Prefer active provider's model, fall back to config, then default
-  return activeProvider?.model || configModels[provider] || cfg.defaults[provider];
+  // For main model, prefer active provider's model
+  // For summary/vision, only use config values (not activeProvider.model which is the main model)
+  if (modelType === 'main') {
+    return activeProvider?.model || configModels[provider] || cfg.defaults[provider];
+  } else {
+    return configModels[provider] || cfg.defaults[provider];
+  }
 }
 
 // Check if model is already saved (guard against unnecessary saves)

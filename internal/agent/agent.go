@@ -129,8 +129,6 @@ type Agent struct {
 	providerBuilders map[string]ProviderBuilder
 	isTTY            bool
 	render           *glamour.TermRenderer
-	thinkingEnabled  bool
-	forceThinking    bool
 	requestCancelMu  sync.Mutex
 	requestCancel    context.CancelFunc
 	planMu           sync.RWMutex
@@ -195,8 +193,6 @@ func New(client llm.Client, cfg config.Config, cfgPath string, mgr *state.Manage
 		providerBuilders:  opts.ProviderBuilders,
 		isTTY:             term.IsTerminal(int(os.Stdin.Fd())),
 		render:            renderer,
-		thinkingEnabled:   cfg.ThinkingEnabled,
-		forceThinking:     cfg.ForceThinking,
 		resumeKey:         strings.TrimSpace(opts.ResumeKey),
 		workspaceRoot:     opts.WorkspaceRoot,
 		toolOpts:          toolOpts,
@@ -287,8 +283,6 @@ func (a *Agent) reloadConfig(path string) error {
 	}
 	a.cfg = newCfg
 	a.cfgPath = path
-	a.thinkingEnabled = newCfg.ThinkingEnabled
-	a.forceThinking = newCfg.ForceThinking
 	logging.UserLog("Config reloaded from %s", path)
 	return nil
 }
@@ -533,7 +527,7 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 		// Inject hidden ultrathink message when force thinking is enabled
 		// Only inject for user messages, not for tool call response rounds
 		requestMessages := messages
-		if a.forceThinking && len(messages) > 0 && messages[len(messages)-1].Role == "user" {
+		if a.cfg.ForceThinking && len(messages) > 0 && messages[len(messages)-1].Role == "user" {
 			requestMessages = make([]state.Message, len(messages), len(messages)+1)
 			copy(requestMessages, messages)
 			requestMessages = append(requestMessages, state.Message{
@@ -551,7 +545,7 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 			Tools:       a.tools.Definitions(),
 			Temperature: a.cfg.Temperature,
 			Thinking: func() *llm.ThinkingOptions {
-				if !a.thinkingEnabled {
+				if !a.cfg.ThinkingEnabled {
 					return nil
 				}
 				return &llm.ThinkingOptions{Type: "enabled"}
@@ -673,7 +667,7 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 		// Inject hidden ultrathink message when force thinking is enabled
 		// Only inject for user messages, not for tool call response rounds
 		requestMessages := messages
-		if a.forceThinking && len(messages) > 0 && messages[len(messages)-1].Role == "user" {
+		if a.cfg.ForceThinking && len(messages) > 0 && messages[len(messages)-1].Role == "user" {
 			requestMessages = make([]state.Message, len(messages), len(messages)+1)
 			copy(requestMessages, messages)
 			requestMessages = append(requestMessages, state.Message{
@@ -690,7 +684,7 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 			Tools:       tools.Definitions(),
 			Temperature: a.cfg.Temperature,
 			Thinking: func() *llm.ThinkingOptions {
-				if !a.thinkingEnabled {
+				if !a.cfg.ThinkingEnabled {
 					return nil
 				}
 				return &llm.ThinkingOptions{Type: "enabled"}
@@ -1401,7 +1395,7 @@ func (a *Agent) handleCommand(cmd string) bool {
 	case ":thinking":
 		if len(parts) == 1 {
 			state := "off"
-			if a.thinkingEnabled {
+			if a.cfg.ThinkingEnabled {
 				state = "on"
 			}
 			fmt.Printf("Thinking is %s\n", state)
@@ -1409,10 +1403,16 @@ func (a *Agent) handleCommand(cmd string) bool {
 		}
 		switch strings.ToLower(parts[1]) {
 		case "on":
-			a.thinkingEnabled = true
+			a.cfg.ThinkingEnabled = true
+			if err := config.Save(a.cfg); err != nil {
+				fmt.Printf("Failed to save config: %v\n", err)
+			}
 			fmt.Println("Thinking enabled.")
 		case "off":
-			a.thinkingEnabled = false
+			a.cfg.ThinkingEnabled = false
+			if err := config.Save(a.cfg); err != nil {
+				fmt.Printf("Failed to save config: %v\n", err)
+			}
 			fmt.Println("Thinking disabled.")
 		default:
 			fmt.Println("Usage: :thinking on|off")

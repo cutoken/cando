@@ -1,0 +1,7 @@
+# V0 config where user explicitly set thinking
+model: glm-4.6
+provider: zai
+temperature: 0.5
+thinking_enabled: false  # User explicitly disabled
+force_thinking: false
+context_profile: ""  # Empty should become "memory"

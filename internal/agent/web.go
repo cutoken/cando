@@ -184,8 +184,14 @@ func (s *webServer) run(ctx context.Context) error {
 func (s *webServer) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		workspace := s.getWorkspaceFromRequest(r)
 		next.ServeHTTP(w, r)
-		s.logger.Printf("[%s] %s %s (%s)", r.RemoteAddr, r.Method, r.URL.Path, time.Since(start).Round(time.Millisecond))
+		duration := time.Since(start).Round(time.Millisecond)
+		if workspace != "" {
+			s.logger.Printf("[ws:%s] [%s] %s %s (%s)", workspace, r.RemoteAddr, r.Method, r.URL.Path, duration)
+		} else {
+			s.logger.Printf("[%s] %s %s (%s)", r.RemoteAddr, r.Method, r.URL.Path, duration)
+		}
 	})
 }
 
@@ -194,8 +200,13 @@ func (s *webServer) logRequestError(r *http.Request, status int, message string)
 		return
 	}
 	workspace := s.getWorkspaceFromRequest(r)
-	s.logger.Printf("[WEB] error status=%d method=%s path=%s workspace=%s remote=%s: %s",
-		status, r.Method, r.URL.Path, workspace, r.RemoteAddr, message)
+	if workspace != "" {
+		s.logger.Printf("[ERROR] [ws:%s] status=%d method=%s path=%s remote=%s: %s",
+			workspace, status, r.Method, r.URL.Path, r.RemoteAddr, message)
+	} else {
+		s.logger.Printf("[ERROR] status=%d method=%s path=%s remote=%s: %s",
+			status, r.Method, r.URL.Path, r.RemoteAddr, message)
+	}
 }
 
 func (s *webServer) respondError(w http.ResponseWriter, r *http.Request, status int, message string) {
@@ -487,7 +498,7 @@ func (s *webServer) handleStream(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, r, http.StatusBadRequest, "select a workspace first")
 		return
 	}
-	s.agent.logger.Printf("[WEB] handleStream: workspace=%s", workspace)
+	s.agent.logger.Printf("[ws:%s] handleStream: starting conversation", workspace)
 	wsCtx, err := s.agent.GetOrCreateWorkspaceContext(workspace)
 	if err != nil {
 		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("get workspace context: %v", err))
@@ -629,7 +640,7 @@ func (s *webServer) handleState(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, r, http.StatusBadRequest, "select a workspace first")
 		return
 	}
-	s.agent.logger.Printf("[WEB] handleState: workspace=%s, action=%s, key=%s", workspace, req.Action, req.Key)
+	s.agent.logger.Printf("[ws:%s] handleState: action=%s, key=%s", workspace, req.Action, req.Key)
 	wsCtx, err := s.agent.GetOrCreateWorkspaceContext(workspace)
 	if err != nil {
 		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("get workspace context: %v", err))
@@ -690,7 +701,6 @@ func (s *webServer) handleThinking(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
 		return
 	}
-	s.agent.thinkingEnabled = req.Enabled
 	s.agent.cfg.ThinkingEnabled = req.Enabled
 
 	// Save to disk
@@ -714,7 +724,6 @@ func (s *webServer) handleForceThinking(w http.ResponseWriter, r *http.Request) 
 		s.respondError(w, r, http.StatusBadRequest, "invalid payload")
 		return
 	}
-	s.agent.forceThinking = req.Enabled
 	s.agent.cfg.ForceThinking = req.Enabled
 
 	// Save to disk
@@ -992,10 +1001,14 @@ func (s *webServer) workspaceExists(path string) bool {
 func (s *webServer) writeSessionPayload(w http.ResponseWriter, r *http.Request) {
 	workspace := s.getWorkspaceFromRequest(r)
 	if workspace != "" && !s.workspaceExists(workspace) {
-		s.logger.Printf("[WEB] requested workspace %s not found; returning empty state", workspace)
+		s.logger.Printf("[ws:%s] workspace not found; returning empty state", workspace)
 		workspace = ""
 	}
-	s.agent.logger.Printf("[WEB] writeSessionPayload: workspace=%s", workspace)
+	if workspace != "" {
+		s.agent.logger.Printf("[ws:%s] writeSessionPayload: building session", workspace)
+	} else {
+		s.agent.logger.Printf("writeSessionPayload: no workspace selected")
+	}
 	payload, err := s.buildSessionPayload(r.Context(), workspace)
 	if err != nil {
 		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to build session: %v", err))
@@ -1009,8 +1022,8 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 	activeModel := s.agent.getActiveModel()
 
 	payload := sessionPayload{
-		Thinking:              s.agent.cfg.ThinkingEnabled,  // Use config value, not agent cache
-		ForceThinking:         s.agent.cfg.ForceThinking,    // Use config value, not agent cache
+		Thinking:              s.agent.cfg.ThinkingEnabled, // Use config value, not agent cache
+		ForceThinking:         s.agent.cfg.ForceThinking,   // Use config value, not agent cache
 		SystemPrompt:          s.agent.cfg.SystemPrompt,
 		Running:               s.agent.HasInFlightRequest(),
 		TotalTokens:           s.agent.getTotalTokens(),
@@ -1023,8 +1036,8 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 		CurrentProvider:       currentProvider,
 		OpenRouterFreeMode:    s.agent.cfg.OpenRouterFreeMode,
 		AnalyticsEnabled:      s.agent.cfg.IsAnalyticsEnabled(),
-		ContextProfile:        s.agent.cfg.ContextProfile,   // Add missing field for profile dropdown
-		Config: &configSnapshot{  // Global config should always be available
+		ContextProfile:        s.agent.cfg.ContextProfile, // Add missing field for profile dropdown
+		Config: &configSnapshot{ // Global config should always be available
 			ContextProfile:             s.agent.cfg.ContextProfile,
 			ContextMessagePercent:      s.agent.cfg.ContextMessagePercent,
 			ContextConversationPercent: s.agent.cfg.ContextTotalPercent,

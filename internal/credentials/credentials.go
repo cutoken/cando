@@ -47,13 +47,13 @@ func getConfigDir() string {
 	if err != nil {
 		return ".cando"
 	}
-	
+
 	// Check if running as beta version
 	execName := filepath.Base(os.Args[0])
 	if strings.Contains(execName, "beta") {
 		return filepath.Join(home, ".cando-beta")
 	}
-	
+
 	return filepath.Join(home, ".cando")
 }
 

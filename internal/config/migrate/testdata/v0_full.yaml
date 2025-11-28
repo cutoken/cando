@@ -1,0 +1,31 @@
+# Full v0 config with typical wrong defaults
+model: qwen/qwen-2.5-72b-instruct
+summary_model: qwen/qwen-2.5-7b-instruct
+vl_model: ""
+base_url: ""
+provider: openrouter
+provider_models:
+    zai: glm-4.6
+    openrouter: qwen/qwen-2.5-72b-instruct
+provider_summary_models:
+    zai: glm-4.5-air
+    openrouter: qwen/qwen-2.5-7b-instruct
+provider_vl_models:
+    zai: ""
+    openrouter: ""
+temperature: 0.7
+system_prompt: "You are a helpful assistant"
+request_timeout_seconds: 0
+conversation_dir: ""
+workspace_root: .
+shell_timeout_seconds: 0
+context_profile: default  # Wrong default
+zai_base_url: ""
+context_message_percent: 0
+context_conversation_percent: 0
+context_protect_recent: 0
+memory_store_path: ""
+history_path: ""
+# Missing thinking_enabled and force_thinking
+compaction_summary_prompt: ""
+openrouter_free_mode: false

@@ -1,0 +1,4 @@
+# Minimal v0 config - typical new user
+model: glm-4.6
+temperature: 0.7
+provider: zai

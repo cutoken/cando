@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"cando/internal/state"
 	"cando/internal/logging"
+	"cando/internal/state"
 	"cando/internal/tooling"
 )
 
@@ -153,17 +153,17 @@ func (t *pinMemoryTool) Call(ctx context.Context, args map[string]any) (string, 
 		return "", errors.New("memory_id is required")
 	}
 	pin := argBool(args, "pin", true)
-	
+
 	logging.DevLog("memory: %s memory %s", map[bool]string{true: "pinning", false: "unpinning"}[pin], id)
-	
+
 	entry, err := t.store.Pin(id, pin, t.maxPins)
 	if err != nil {
 		logging.ErrorLog("memory: failed to %s %s: %v", map[bool]string{true: "pin", false: "unpin"}[pin], id, err)
 		return "", err
 	}
-	
+
 	logging.UserLog("Memory %s %s successfully (pinned count: %d)", id, map[bool]string{true: "pinned", false: "unpinned"}[pin], t.store.PinnedCount())
-	
+
 	payload := map[string]any{
 		"memory_id":    entry.ID,
 		"pinned":       entry.Pinned,

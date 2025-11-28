@@ -91,13 +91,15 @@ type CredentialManager interface {
 }
 
 type Options struct {
-	WorkspaceRoot string
-	ShellTimeout  time.Duration
-	PlanPath      string
-	BinDir        string
-	ExternalData  bool
-	ProcessDir    string
-	CredManager   CredentialManager
+	WorkspaceRoot         string
+	ShellTimeout          time.Duration
+	PlanPath              string
+	BinDir                string
+	ExternalData          bool
+	ProcessDir            string
+	CredManager           CredentialManager
+	ZAIVisionURL          string
+	OpenRouterVisionURL   string
 }
 
 func DefaultTools(opts Options) []Tool {
@@ -177,7 +179,7 @@ func DefaultTools(opts Options) []Tool {
 		NewApplyPatchTool(guard),
 		NewGlobTool(guard),
 		NewGrepTool(guard),
-		NewVisionTool(guard, opts.CredManager),
+		NewVisionToolWithConfig(guard, opts.CredManager, opts.ZAIVisionURL, opts.OpenRouterVisionURL),
 		bgTool,
 	}
 }
