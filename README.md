@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/cando_logo.png" alt="CanDo Logo" width="200">
+  <img src="docs/images/cando_logo.png" alt="CanDo Logo" width="200">
 </p>
 
 # CanDo
@@ -69,7 +69,7 @@ Credentials are stored in `~/.cando/credentials.yaml`. Workspace data lives unde
 
 ## What Can CanDo Build?
 
-![Doom game built with CanDo](images/doom_game.png)
+![Doom game built with CanDo](docs/images/doom_game.png)
 *A fully functional Doom-style game built by CanDo in under 5 minutes*
 
 ### Community & Support
@@ -92,7 +92,7 @@ cando --version                    # Show version
 
 ---
 
-![CanDo Web UI](images/cando-ui.png)
+![CanDo Web UI](docs/images/cando-ui.png)
 
 ## Sample Projects
 
@@ -100,9 +100,9 @@ Projects built with CanDo:
 
 | | |
 |:---:|:---:|
-| ![Pacman Game](images/pacman.png) | ![Milkyway Animation](images/milkyway-animation.png) |
+| ![Pacman Game](docs/images/pacman.png) | ![Milkyway Animation](docs/images/milkyway-animation.png) |
 | Pacman Game | Milkyway Animation |
-| ![Moon Phases](images/moon-phases-animation.png) | ![Sculpting Tool](images/basic-sculpting-tool.png) |
+| ![Moon Phases](docs/images/moon-phases-animation.png) | ![Sculpting Tool](docs/images/basic-sculpting-tool.png) |
 | Moon Phases Animation | Sculpting Tool |
 
 ---
