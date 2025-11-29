@@ -109,13 +109,21 @@ if git rev-parse "$VERSION" >/dev/null 2>&1; then
 fi
 
 # Get the highest version tag for changelog generation
-PREV_TAG=$(git tag --sort=-version:refname | head -1 2>/dev/null || "")
+PREV_TAG=$(git tag --sort=-version:refname | head -1 2>/dev/null || echo "")
+
+# Generate changelog safely
+if [[ -n "$PREV_TAG" ]]; then
+    CHANGES=$(git log ${PREV_TAG}..HEAD --oneline 2>/dev/null | head -10 || echo "No changes found")
+else
+    CHANGES="Initial beta release"
+fi
+
 TAG_MESSAGE="Beta Release $VERSION
 
 This is a prerelease version for testing.
 
 Changes since last release:
-$(if [[ -n "$PREV_TAG" ]]; then git log ${PREV_TAG}..HEAD --oneline 2>/dev/null | head -10; else echo "Initial beta release"; fi)"
+$CHANGES"
 
 # Create the tag with error checking
 if ! git tag -a "$VERSION" -m "$TAG_MESSAGE"; then
