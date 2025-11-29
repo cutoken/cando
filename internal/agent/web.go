@@ -2576,12 +2576,20 @@ func (s *webServer) fetchLatestVersion() (string, error) {
 	defer cancel()
 
 	// Check if running as beta version (include prereleases in update check)
-	isBeta := strings.Contains(filepath.Base(s.binaryPath), "beta")
+	binaryName := filepath.Base(s.binaryPath)
+	if binaryName == "" || binaryName == "." {
+		// Fallback: try to get executable path directly
+		if exe, err := os.Executable(); err == nil {
+			binaryName = filepath.Base(exe)
+		}
+	}
+	isBeta := strings.Contains(strings.ToLower(binaryName), "beta")
+	s.logger.Printf("update check: binary=%s, isBeta=%v", binaryName, isBeta)
 
 	var url string
 	if isBeta {
-		// Beta channel: fetch all releases (includes prereleases), take first
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?per_page=1", githubRepoOwner, githubRepoName)
+		// Beta channel: fetch releases and find latest prerelease
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?per_page=10", githubRepoOwner, githubRepoName)
 	} else {
 		// Stable channel: fetch only latest stable release
 		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubRepoOwner, githubRepoName)
@@ -2604,17 +2612,25 @@ func (s *webServer) fetchLatestVersion() (string, error) {
 	}
 
 	if isBeta {
-		// Parse array response for /releases endpoint
+		// Parse array response for /releases endpoint, find latest prerelease
 		var releases []struct {
-			TagName string `json:"tag_name"`
+			TagName    string `json:"tag_name"`
+			Prerelease bool   `json:"prerelease"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 			return "", err
 		}
-		if len(releases) == 0 {
-			return "", fmt.Errorf("no releases found")
+		s.logger.Printf("beta channel: fetched %d releases", len(releases))
+		// Find the first prerelease
+		for _, r := range releases {
+			if r.Prerelease {
+				s.logger.Printf("beta channel: found prerelease %s", r.TagName)
+				return r.TagName, nil
+			}
 		}
-		return releases[0].TagName, nil
+		// No prerelease found - this shouldn't happen if releases exist
+		s.logger.Printf("beta channel: no prerelease found in %d releases", len(releases))
+		return "", fmt.Errorf("no prerelease found")
 	}
 
 	// Parse single object response for /releases/latest endpoint
