@@ -102,6 +102,12 @@ fi
 
 # Create annotated tag
 info "Creating tag: $VERSION"
+
+# Check if tag already exists
+if git rev-parse "$VERSION" >/dev/null 2>&1; then
+    error "Tag $VERSION already exists! Delete it first with: git tag -d $VERSION"
+fi
+
 # Get the highest version tag for changelog generation
 PREV_TAG=$(git tag --sort=-version:refname | head -1 2>/dev/null || "")
 TAG_MESSAGE="Beta Release $VERSION
@@ -111,7 +117,15 @@ This is a prerelease version for testing.
 Changes since last release:
 $(if [[ -n "$PREV_TAG" ]]; then git log ${PREV_TAG}..HEAD --oneline 2>/dev/null | head -10; else echo "Initial beta release"; fi)"
 
-git tag -a "$VERSION" -m "$TAG_MESSAGE"
+# Create the tag with error checking
+if ! git tag -a "$VERSION" -m "$TAG_MESSAGE"; then
+    error "Failed to create tag $VERSION. Check git output above for details."
+fi
+
+# Verify tag was created
+if ! git rev-parse "$VERSION" >/dev/null 2>&1; then
+    error "Tag $VERSION was not created successfully!"
+fi
 
 beta "Tag created successfully!"
 echo ""
