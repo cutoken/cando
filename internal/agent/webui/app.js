@@ -5801,7 +5801,7 @@ function renderFileTreeItem(entry, container, workspacePath, depth) {
       <span class="item-name">${escapeHtml(entry.name)}</span>
     `;
 
-    item.addEventListener('dblclick', (e) => {
+    item.addEventListener('click', (e) => {
       e.stopPropagation();
       openFile(entry.path, entry.name, workspacePath);
     });
@@ -5916,7 +5916,9 @@ async function handleNewFile() {
 
     // Refresh tree and open the new file
     await refreshFileTree();
-    openFile(workspacePath, filePath);
+    // openFile expects (filePath, fileName, workspacePath)
+    const fullPath = workspacePath + '/' + filePath;
+    openFile(fullPath, fileName.trim(), workspacePath);
     showToast(`Created ${fileName}`, 'success');
   } catch (err) {
     showToast('Failed to create file', 'error');
