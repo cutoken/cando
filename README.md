@@ -35,10 +35,23 @@ chmod +x cando
 sudo mv cando /usr/local/bin/
 ```
 
-**Windows (PowerShell)**
+**Windows (PowerShell) - Recommended**
 
 ```powershell
+irm https://raw.githubusercontent.com/cutoken/cando/main/install.ps1 | iex
+```
+
+This installs to `%LOCALAPPDATA%\Programs\cando`, adds to PATH, and creates a Start Menu shortcut.
+
+**Windows (Manual)**
+
+```powershell
+# For AMD64 (most Windows PCs):
 Invoke-WebRequest -Uri "https://github.com/cutoken/cando/releases/latest/download/cando-windows-amd64.exe" -OutFile "cando.exe"
+
+# For ARM64 (Surface Pro X, Windows on ARM):
+Invoke-WebRequest -Uri "https://github.com/cutoken/cando/releases/latest/download/cando-windows-arm64.exe" -OutFile "cando.exe"
+
 Move-Item cando.exe C:\Users\$env:USERNAME\bin\  # choose any folder on PATH
 ```
 

@@ -324,8 +324,8 @@ func main() {
 	fmt.Printf("→ Web UI: http://%s\n", listenAddr)
 	fmt.Println()
 
-	// Auto-open browser (skip in dev mode to avoid repeated launches)
-	if os.Getenv("DEV_MODE") == "" {
+	// Auto-open browser (skip in dev mode and when restarting after update)
+	if os.Getenv("DEV_MODE") == "" && os.Getenv("CANDO_RESTARTING") == "" {
 		go openBrowser("http://" + listenAddr)
 	}
 

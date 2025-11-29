@@ -541,8 +541,8 @@
                         <p class="install-note">Installs to ~/.local/bin</p>
                     </div>
                     <div class="tab-content" data-os="windows">
-                        <code>Invoke-WebRequest -Uri "https://github.com/cutoken/cando/releases/latest/download/cando-windows-amd64.exe" -OutFile "cando.exe"</code>
-                        <p class="install-note">PowerShell command - save to a folder in your PATH</p>
+                        <code>irm https://raw.githubusercontent.com/cutoken/cando/main/install.ps1 | iex</code>
+                        <p class="install-note">PowerShell - installs to AppData, adds to PATH, creates Start Menu shortcut</p>
                     </div>
                 </div>
                 <p class="install-note">Or <a href="https://github.com/cutoken/cando/releases/latest">download manually</a> for your platform.</p>

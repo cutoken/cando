@@ -57,6 +57,8 @@ build-windows:
 	@echo "Building for Windows (amd64)..."
 	@mkdir -p $(BUILD_DIR)
 	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/cando-windows-amd64.exe ./cmd/cando
+	@echo "Building for Windows (arm64)..."
+	GOOS=windows GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/cando-windows-arm64.exe ./cmd/cando
 
 release: all
 	@echo "Creating release archives..."

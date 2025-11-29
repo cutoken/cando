@@ -36,7 +36,8 @@ Go to the [Releases page](https://github.com/cutoken/cando/releases) and downloa
 - **Linux (ARM64)**: `cando-linux-arm64-bin`
 - **macOS (Intel)**: `cando-darwin-amd64-bin`
 - **macOS (Apple Silicon)**: `cando-darwin-arm64-bin`
-- **Windows**: `cando-windows-amd64.exe`
+- **Windows (x86_64)**: `cando-windows-amd64.exe`
+- **Windows (ARM64)**: `cando-windows-arm64.exe`
 
 ### 2. Install to your local bin directory
 

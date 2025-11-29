@@ -87,11 +87,21 @@ type webServer struct {
 	workspaceManager *WorkspaceManager
 	httpServer       *http.Server
 	shutdownCh       chan struct{}
+	binaryPath       string // Original binary path, captured at startup for restart
 }
 
 func (s *webServer) run(ctx context.Context) error {
 	if s.logger == nil {
 		s.logger = log.Default()
+	}
+
+	// Capture original binary path at startup (before any renames during update)
+	if exe, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			s.binaryPath = resolved
+		} else {
+			s.binaryPath = exe
+		}
 	}
 
 	// Initialize workspace manager
@@ -2477,13 +2487,13 @@ func (s *webServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if writable
-	if err := checkWritable(binaryPath); err != nil {
+	// Check if directory is writable (we rename files, not write to running binary)
+	if err := checkDirWritable(filepath.Dir(binaryPath)); err != nil {
 		s.writeJSON(w, r, map[string]any{
 			"success":     false,
 			"needsManual": true,
-			"command":     "curl -fsSL https://raw.githubusercontent.com/" + githubRepoOwner + "/" + githubRepoName + "/main/install.sh | bash",
-			"message":     fmt.Sprintf("Binary not writable: %v", err),
+			"command":     getManualInstallCommand(),
+			"message":     fmt.Sprintf("Directory not writable: %v", err),
 		})
 		return
 	}
@@ -2494,6 +2504,13 @@ func (s *webServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("update failed: %v", err))
 		return
 	}
+
+	// Clear update state so new version doesn't show update prompt
+	state, _ := config.LoadUpdateState()
+	state.LatestVersion = "" // Clear so new binary checks fresh
+	state.DismissedUntil = time.Time{}
+	state.LastCheckTime = time.Time{}
+	_ = state.Save()
 
 	s.logger.Printf("update downloaded successfully")
 	s.writeJSON(w, r, map[string]any{
@@ -2524,19 +2541,29 @@ func (s *webServer) triggerRestart(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("\n🔄 Restarting Cando...")
 		s.logger.Printf("restarting application...")
 
-		// Exec new binary - this replaces the process immediately
-		binary, err := os.Executable()
-		if err != nil {
-			fmt.Printf("❌ Failed to get executable: %v\n", err)
-			s.logger.Printf("failed to get executable: %v", err)
-			os.Exit(1)
+		// Use the original binary path captured at startup
+		// (os.Executable() would return the .backup path after rename during update)
+		binary := s.binaryPath
+		if binary == "" {
+			// Fallback if not set (shouldn't happen)
+			var err error
+			binary, err = os.Executable()
+			if err != nil {
+				fmt.Printf("❌ Failed to get executable: %v\n", err)
+				s.logger.Printf("failed to get executable: %v", err)
+				os.Exit(1)
+			}
 		}
 
 		s.logger.Printf("exec: %s %v", binary, os.Args)
 
+		// Add env var to signal this is a restart (skip browser open)
+		env := os.Environ()
+		env = append(env, "CANDO_RESTARTING=1")
+
 		// syscall.Exec replaces current process, no need for graceful shutdown
 		// The OS will clean up the listening socket
-		if err := execBinary(binary, os.Args, os.Environ()); err != nil {
+		if err := execBinary(binary, os.Args, env); err != nil {
 			fmt.Printf("❌ Failed to restart: %v\n", err)
 			s.logger.Printf("failed to exec: %v", err)
 			os.Exit(1)
@@ -2548,7 +2575,18 @@ func (s *webServer) fetchLatestVersion() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
 	defer cancel()
 
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubRepoOwner, githubRepoName)
+	// Check if running as beta version (include prereleases in update check)
+	isBeta := strings.Contains(filepath.Base(s.binaryPath), "beta")
+
+	var url string
+	if isBeta {
+		// Beta channel: fetch all releases (includes prereleases), take first
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?per_page=1", githubRepoOwner, githubRepoName)
+	} else {
+		// Stable channel: fetch only latest stable release
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubRepoOwner, githubRepoName)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
@@ -2565,6 +2603,21 @@ func (s *webServer) fetchLatestVersion() (string, error) {
 		return "", fmt.Errorf("github API returned %d", resp.StatusCode)
 	}
 
+	if isBeta {
+		// Parse array response for /releases endpoint
+		var releases []struct {
+			TagName string `json:"tag_name"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+			return "", err
+		}
+		if len(releases) == 0 {
+			return "", fmt.Errorf("no releases found")
+		}
+		return releases[0].TagName, nil
+	}
+
+	// Parse single object response for /releases/latest endpoint
 	var release struct {
 		TagName string `json:"tag_name"`
 	}
@@ -2655,13 +2708,18 @@ func (s *webServer) downloadAndReplaceBinary(binaryPath string) error {
 	return nil
 }
 
-func checkWritable(path string) error {
-	file, err := os.OpenFile(path, os.O_WRONLY, 0)
+// checkDirWritable verifies we can create/rename files in the directory.
+// We don't need to write to the running binary - we rename it instead.
+// This works on both Linux (ETXTBSY prevents writing but not renaming)
+// and Windows (running exe can be renamed but not deleted).
+func checkDirWritable(dir string) error {
+	f, err := os.CreateTemp(dir, ".cando-writetest-*")
 	if err != nil {
 		return err
 	}
-	file.Close()
-	return nil
+	name := f.Name()
+	f.Close()
+	return os.Remove(name)
 }
 
 func compareVersions(v1, v2 string) int {
@@ -2698,4 +2756,27 @@ func getOS() string {
 
 func getArch() string {
 	return runtime.GOARCH
+}
+
+// getManualInstallCommand returns platform-specific install command for manual updates
+func getManualInstallCommand() string {
+	switch runtime.GOOS {
+	case "windows":
+		// PowerShell command for Windows - downloads to current directory
+		// User needs to move/replace their installed binary manually
+		arch := runtime.GOARCH
+		if arch == "arm64" {
+			return fmt.Sprintf(
+				`Invoke-WebRequest -Uri "https://github.com/%s/%s/releases/latest/download/cando-windows-arm64.exe" -OutFile "cando.exe"`,
+				githubRepoOwner, githubRepoName)
+		}
+		return fmt.Sprintf(
+			`Invoke-WebRequest -Uri "https://github.com/%s/%s/releases/latest/download/cando-windows-amd64.exe" -OutFile "cando.exe"`,
+			githubRepoOwner, githubRepoName)
+	default:
+		// Bash/curl for Linux and macOS
+		return fmt.Sprintf(
+			"curl -fsSL https://raw.githubusercontent.com/%s/%s/main/install.sh | bash",
+			githubRepoOwner, githubRepoName)
+	}
 }

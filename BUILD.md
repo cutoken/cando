@@ -63,7 +63,8 @@ dist/
 ├── cando-linux-arm64        # Linux ARM64
 ├── cando-darwin-amd64       # macOS Intel
 ├── cando-darwin-arm64       # macOS Apple Silicon
-└── cando-windows-amd64.exe  # Windows 64-bit
+├── cando-windows-amd64.exe  # Windows x86_64
+└── cando-windows-arm64.exe  # Windows ARM64
 ```
 
 ## Creating a Release
