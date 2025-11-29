@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cando - AI Coding Agent</title>
+    <title>CanDo - The Coding Agent That Actually Gets Shit Done</title>
     <meta name="description" content="AI coding agent with web UI, multi-workspace support, and sandboxed tool execution.">
     <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/cutoken/cando/main/images/cando_logo.png">
     <style>
@@ -81,34 +81,71 @@
         /* Hero */
         .hero {
             padding: 40px 0 60px;
+        }
+
+        .hero-content {
+            display: flex;
+            align-items: center;
+            gap: 60px;
+        }
+
+        .hero-logo-section {
+            flex: 0 0 30%;
             text-align: center;
         }
 
+        .hero-text-section {
+            flex: 1;
+        }
+
         .hero-logo {
-            width: 80px;
-            margin-bottom: 20px;
+            width: 160px;
+            max-width: 100%;
         }
 
         .hero h1 {
-            font-size: 2.5rem;
-            margin-bottom: 12px;
-            background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            font-size: 2.8rem;
+            margin-bottom: 16px;
+            font-weight: 800;
+            line-height: 1.1;
+            color: var(--text);
         }
 
-        .hero p {
-            font-size: 1.1rem;
+        .hero .tagline {
+            font-size: 1.2rem;
             color: var(--text-muted);
-            max-width: 650px;
-            margin: 0 auto 32px;
+            margin: 0 0 24px;
+            line-height: 1.5;
+        }
+
+        .hero .highlight {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .hero-content {
+                flex-direction: column;
+                text-align: center;
+                gap: 30px;
+            }
+            .hero-logo-section {
+                flex: none;
+            }
+            .hero-logo {
+                width: 100px;
+            }
+            .hero h1 {
+                font-size: 2rem;
+            }
+            .hero .tagline {
+                font-size: 1.1rem;
+            }
         }
 
         .cta-buttons {
             display: flex;
-            gap: 16px;
-            justify-content: center;
+            gap: 12px;
             flex-wrap: wrap;
         }
 
@@ -333,6 +370,27 @@
             color: var(--text-muted);
         }
 
+        /* Demo Image */
+        .demo-image {
+            margin: 60px 0;
+            text-align: center;
+        }
+
+        .demo-image img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+        }
+
+        .demo-caption {
+            margin-top: 16px;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-style: italic;
+        }
+
         /* Gallery */
         .gallery {
             padding: 80px 0;
@@ -426,7 +484,7 @@
             <nav>
                 <a href="#" class="logo">
                     <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/cando_logo.png" alt="Cando">
-                    Cando
+                    CanDo
                 </a>
                 <div class="nav-links">
                     <a href="#features">Features</a>
@@ -442,13 +500,25 @@
     <main>
         <section class="hero">
             <div class="container">
-                <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/cando_logo.png" alt="Cando" class="hero-logo">
-                <h1>The AI That Actually Gets Shit Done</h1>
-                <p>Not another chatbot. Cando writes real code, runs real commands, and ships real features. Built a Pacman game in 5 minutes? Yeah, We CanDo that.</p>
-                <div class="cta-buttons">
-                    <a href="#install" class="btn btn-primary">Install</a>
-                    <a href="https://discord.gg/fzWbCf9CA" class="btn btn-discord">Join Discord</a>
-                    <a href="https://github.com/cutoken/cando" class="btn btn-secondary">View on GitHub</a>
+                <div class="hero-content">
+                    <div class="hero-logo-section">
+                        <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/cando_logo.png" alt="CanDo" class="hero-logo">
+                    </div>
+                    <div class="hero-text-section">
+                        <h1>The Coding Agent That<br>Actually Gets Shit Done</h1>
+                        <p class="tagline">Not another chatbot. <span class="highlight">Real code. Real commands. Real features.</span><br>
+                        Build a Doom game in 5 minutes? <strong>Yeah, We CanDo that.</strong></p>
+                        <div class="cta-buttons">
+                            <a href="#install" class="btn btn-primary">Install</a>
+                            <a href="https://discord.gg/fzWbCf9CA" class="btn btn-discord">Join Discord</a>
+                            <a href="https://github.com/cutoken/cando" class="btn btn-secondary">GitHub</a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="demo-image">
+                    <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/doom_game.png" alt="Doom game built with CanDo">
+                    <p class="demo-caption">A fully functional Doom-style game built by CanDo in under 5 minutes</p>
                 </div>
             </div>
         </section>
@@ -507,7 +577,7 @@
                     </div>
                     <div class="feature-card">
                         <h3>Z.AI & OpenRouter</h3>
-                        <p>Use Claude, GPT-4, GLM models via Z.AI, or any of 100+ models through OpenRouter.</p>
+                        <p>Use GLM models via Z.AI, or Claude, GPT-4, and 100+ other models through OpenRouter.</p>
                     </div>
                     <div class="feature-card">
                         <h3>Remembers Everything</h3>
