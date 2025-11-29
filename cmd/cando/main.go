@@ -43,7 +43,7 @@ func main() {
 		sandboxPath  = flag.String("sandbox", "", "Override workspace root/sandbox directory")
 		resumeKey    = flag.String("resume", "", "Resume an existing session key")
 		listSessions = flag.Bool("list-sessions", false, "List stored sessions for this workspace and exit")
-		port         = flag.Int("port", 0, "Port for web UI (default: auto-select starting at 3737)")
+		port         = flag.Int("port", 0, "Port for web UI (default: 3737, beta: 8787)")
 		promptFlag   = flag.String("p", "", "Execute a single prompt and exit (non-interactive mode)")
 		setupFlag    = flag.Bool("setup", false, "Run credential setup wizard")
 		versionFlag  = flag.Bool("version", false, "Print version and exit")
@@ -303,8 +303,13 @@ func main() {
 		cancel()
 	}()
 
-	// Determine port
+	// Determine port - beta uses 8787, stable uses 3737
 	listenPort := 3737
+	if exe, err := os.Executable(); err == nil {
+		if strings.Contains(strings.ToLower(filepath.Base(exe)), "beta") {
+			listenPort = 8787
+		}
+	}
 	if portEnv := os.Getenv("CANDO_PORT"); portEnv != "" {
 		if port, err := strconv.Atoi(portEnv); err == nil && port > 0 {
 			listenPort = port
@@ -324,8 +329,8 @@ func main() {
 	fmt.Printf("→ Web UI: http://%s\n", listenAddr)
 	fmt.Println()
 
-	// Auto-open browser (skip in dev mode to avoid repeated launches)
-	if os.Getenv("DEV_MODE") == "" {
+	// Auto-open browser (skip in dev mode and when restarting after update)
+	if os.Getenv("DEV_MODE") == "" && os.Getenv("CANDO_RESTARTING") == "" {
 		go openBrowser("http://" + listenAddr)
 	}
 

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CanDo - The Coding Agent That Actually Gets Shit Done</title>
     <meta name="description" content="AI coding agent with web UI, multi-workspace support, and sandboxed tool execution.">
-    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/cutoken/cando/main/images/cando_logo.png">
+    <link rel="icon" type="image/png" href="images/cando_logo.png">
     <style>
         :root {
             --bg: #ffffff;
@@ -372,20 +372,20 @@
 
         /* Demo Image */
         .demo-image {
-            margin: 60px 0;
+            margin: 40px 0;
             text-align: center;
         }
 
         .demo-image img {
-            max-width: 100%;
+            max-width: 70%;
             height: auto;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
             border: 1px solid var(--border);
         }
 
         .demo-caption {
-            margin-top: 16px;
+            margin-bottom: 16px;
             color: var(--text-muted);
             font-size: 0.95rem;
             font-style: italic;
@@ -483,7 +483,7 @@
         <div class="container">
             <nav>
                 <a href="#" class="logo">
-                    <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/cando_logo.png" alt="Cando">
+                    <img src="images/cando_logo.png" alt="Cando">
                     CanDo
                 </a>
                 <div class="nav-links">
@@ -502,7 +502,7 @@
             <div class="container">
                 <div class="hero-content">
                     <div class="hero-logo-section">
-                        <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/cando_logo.png" alt="CanDo" class="hero-logo">
+                        <img src="images/cando_logo.png" alt="CanDo" class="hero-logo">
                     </div>
                     <div class="hero-text-section">
                         <h1>The Coding Agent That<br>Actually Gets Shit Done</h1>
@@ -517,8 +517,8 @@
                 </div>
                 
                 <div class="demo-image">
-                    <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/doom_game.png" alt="Doom game built with CanDo">
                     <p class="demo-caption">A fully functional Doom-style game built by CanDo in under 5 minutes</p>
+                    <img src="images/doom_game.png" alt="Doom game built with CanDo">
                 </div>
             </div>
         </section>
@@ -541,8 +541,8 @@
                         <p class="install-note">Installs to ~/.local/bin</p>
                     </div>
                     <div class="tab-content" data-os="windows">
-                        <code>Invoke-WebRequest -Uri "https://github.com/cutoken/cando/releases/latest/download/cando-windows-amd64.exe" -OutFile "cando.exe"</code>
-                        <p class="install-note">PowerShell command - save to a folder in your PATH</p>
+                        <code>irm https://raw.githubusercontent.com/cutoken/cando/main/install.ps1 | iex</code>
+                        <p class="install-note">PowerShell - installs to AppData, adds to PATH, creates Start Menu shortcut</p>
                     </div>
                 </div>
                 <p class="install-note">Or <a href="https://github.com/cutoken/cando/releases/latest">download manually</a> for your platform.</p>
@@ -560,7 +560,7 @@
         </section>
 
         <section class="container screenshot">
-            <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/cando-ui.png" alt="Cando Web UI">
+            <img src="images/cando-ui.png" alt="Cando Web UI">
         </section>
 
         <section id="features" class="features">
@@ -601,19 +601,19 @@
                 <p>A Pacman game? A 3D animation? A sculpting tool? Yeah, We CanDo that.</p>
                 <div class="gallery-grid">
                     <div class="gallery-item">
-                        <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/pacman.png" alt="Pacman Game">
+                        <img src="images/pacman.png" alt="Pacman Game">
                         <h4>Pacman Game</h4>
                     </div>
                     <div class="gallery-item">
-                        <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/milkyway-animation.png" alt="Milkyway Animation">
+                        <img src="images/milkyway-animation.png" alt="Milkyway Animation">
                         <h4>Milkyway Animation</h4>
                     </div>
                     <div class="gallery-item">
-                        <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/moon-phases-animation.png" alt="Moon Phases">
+                        <img src="images/moon-phases-animation.png" alt="Moon Phases">
                         <h4>Moon Phases Animation</h4>
                     </div>
                     <div class="gallery-item">
-                        <img src="https://raw.githubusercontent.com/cutoken/cando/main/images/basic-sculpting-tool.png" alt="Sculpting Tool">
+                        <img src="images/basic-sculpting-tool.png" alt="Sculpting Tool">
                         <h4>Sculpting Tool</h4>
                     </div>
                 </div>

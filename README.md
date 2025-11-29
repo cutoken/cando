@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/cando_logo.png" alt="CanDo Logo" width="200">
+  <img src="docs/images/cando_logo.png" alt="CanDo Logo" width="200">
 </p>
 
 # CanDo
@@ -35,10 +35,23 @@ chmod +x cando
 sudo mv cando /usr/local/bin/
 ```
 
-**Windows (PowerShell)**
+**Windows (PowerShell) - Recommended**
 
 ```powershell
+irm https://raw.githubusercontent.com/cutoken/cando/main/install.ps1 | iex
+```
+
+This installs to `%LOCALAPPDATA%\Programs\cando`, adds to PATH, and creates a Start Menu shortcut.
+
+**Windows (Manual)**
+
+```powershell
+# For AMD64 (most Windows PCs):
 Invoke-WebRequest -Uri "https://github.com/cutoken/cando/releases/latest/download/cando-windows-amd64.exe" -OutFile "cando.exe"
+
+# For ARM64 (Surface Pro X, Windows on ARM):
+Invoke-WebRequest -Uri "https://github.com/cutoken/cando/releases/latest/download/cando-windows-arm64.exe" -OutFile "cando.exe"
+
 Move-Item cando.exe C:\Users\$env:USERNAME\bin\  # choose any folder on PATH
 ```
 
@@ -56,7 +69,7 @@ Credentials are stored in `~/.cando/credentials.yaml`. Workspace data lives unde
 
 ## What Can CanDo Build?
 
-![Doom game built with CanDo](images/doom_game.png)
+![Doom game built with CanDo](docs/images/doom_game.png)
 *A fully functional Doom-style game built by CanDo in under 5 minutes*
 
 ### Community & Support
@@ -79,7 +92,7 @@ cando --version                    # Show version
 
 ---
 
-![CanDo Web UI](images/cando-ui.png)
+![CanDo Web UI](docs/images/cando-ui.png)
 
 ## Sample Projects
 
@@ -87,9 +100,9 @@ Projects built with CanDo:
 
 | | |
 |:---:|:---:|
-| ![Pacman Game](images/pacman.png) | ![Milkyway Animation](images/milkyway-animation.png) |
+| ![Pacman Game](docs/images/pacman.png) | ![Milkyway Animation](docs/images/milkyway-animation.png) |
 | Pacman Game | Milkyway Animation |
-| ![Moon Phases](images/moon-phases-animation.png) | ![Sculpting Tool](images/basic-sculpting-tool.png) |
+| ![Moon Phases](docs/images/moon-phases-animation.png) | ![Sculpting Tool](docs/images/basic-sculpting-tool.png) |
 | Moon Phases Animation | Sculpting Tool |
 
 ---

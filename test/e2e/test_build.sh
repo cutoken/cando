@@ -109,6 +109,7 @@ run_build_test "Linux arm64" "linux" "arm64" "$TEMP_DIR/cando-linux-arm64"
 run_build_test "macOS amd64" "darwin" "amd64" "$TEMP_DIR/cando-darwin-amd64"
 run_build_test "macOS arm64" "darwin" "arm64" "$TEMP_DIR/cando-darwin-arm64"
 run_build_test "Windows amd64" "windows" "amd64" "$TEMP_DIR/cando-windows-amd64.exe"
+run_build_test "Windows arm64" "windows" "arm64" "$TEMP_DIR/cando-windows-arm64.exe"
 
 # Test linters
 TESTS_RUN=$((TESTS_RUN + 1))
