@@ -102,6 +102,47 @@ When reporting bugs, include:
 
 By contributing to Cando, you agree that your contributions will be licensed under the GNU Affero General Public License v3.0.
 
+## Project Structure
+
+```
+cmd/cando/          - Entry point
+internal/
+  agent/            - Core orchestration, web UI
+  config/           - Configuration
+  contextprofile/   - Memory compression
+  llm/              - Provider interface
+  zai/              - Z.AI client
+  openrouter/       - OpenRouter client
+  state/            - Conversation persistence
+  tooling/          - Sandboxed tools
+```
+
+## Configuration
+
+Config: `~/.cando/config.yaml` (created on first run)
+
+```yaml
+model: glm-4.6
+provider_models:
+  zai: glm-4.6
+  openrouter: qwen/qwen2-72b-instruct
+temperature: 0.7
+thinking_enabled: true
+context_profile: memory
+```
+
+Credentials: `~/.cando/credentials.yaml` (via `cando --setup`)
+
+Environment variables:
+- `CANDO_CREDENTIALS_PATH` - Override credentials path
+- `CANDO_CONFIG_PATH` - Override config path
+
+## CI/CD
+
+- Push to `main` or PR triggers CI (tests, vet, build)
+- Tag with `v*` triggers release workflow
+- Release script: `./scripts/release.sh vX.Y.Z`
+
 ## Questions?
 
 - Open a [Discussion](https://github.com/cutoken/cando/discussions) for general questions
