@@ -197,7 +197,7 @@ func (v *VisionTool) Call(ctx context.Context, args map[string]any) (string, err
 		"analysis":   result,
 	}
 
-	data, err := json.Marshal(payload)
+	data, err := jsonMarshalNoEscape(payload)
 	if err != nil {
 		return "", err
 	}

@@ -51,6 +51,8 @@ const ui = {
   helpBtn: null,
   analyticsToggle: null,
   planModeBtn: null,
+  requestTimeoutInput: null,
+  requestTimeoutValue: null,
 };
 
 const appState = {
@@ -111,6 +113,8 @@ async function initUI() {
   ui.helpBtn = document.getElementById('helpBtn');
   ui.analyticsToggle = document.getElementById('analyticsToggle');
   ui.planModeBtn = document.getElementById('planModeBtn');
+  ui.requestTimeoutInput = document.getElementById('requestTimeoutInput');
+  ui.requestTimeoutValue = document.getElementById('requestTimeoutValue');
 
   ui.promptForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -142,6 +146,10 @@ async function initUI() {
   }
   if (ui.analyticsToggle) {
     ui.analyticsToggle.addEventListener('change', toggleAnalytics);
+  }
+  if (ui.requestTimeoutInput) {
+    ui.requestTimeoutInput.addEventListener('input', updateRequestTimeoutLabel);
+    ui.requestTimeoutInput.addEventListener('change', saveRequestTimeout);
   }
   ui.compactionHistoryBtn.addEventListener('click', showCompactionHistory);
   ui.closeCompactionDialog.addEventListener('click', closeCompactionHistory);
@@ -2265,12 +2273,51 @@ async function openSettingsDialog() {
     initializeProviderAccordions();
     populateSystemPrompt();
     populateAnalyticsToggle();
+    populateRequestTimeout();
   }
 }
 
 function populateAnalyticsToggle() {
   if (!ui.analyticsToggle || !appState.data) return;
   ui.analyticsToggle.checked = appState.data.analytics_enabled !== false;
+}
+
+function populateRequestTimeout() {
+  if (!ui.requestTimeoutInput || !ui.requestTimeoutValue || !appState.data || !appState.data.config) return;
+  const timeout = appState.data.config.request_timeout_seconds || 90;
+  ui.requestTimeoutInput.value = timeout;
+  ui.requestTimeoutValue.textContent = timeout;
+}
+
+function updateRequestTimeoutLabel() {
+  if (!ui.requestTimeoutInput || !ui.requestTimeoutValue) return;
+  ui.requestTimeoutValue.textContent = ui.requestTimeoutInput.value;
+}
+
+async function saveRequestTimeout() {
+  if (!ui.requestTimeoutInput) return;
+  const timeout = parseInt(ui.requestTimeoutInput.value, 10);
+  try {
+    const resp = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_timeout_seconds: timeout }),
+    });
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error('Failed to save request timeout:', err);
+      // Revert to previous value
+      populateRequestTimeout();
+    } else {
+      // Update local state so refreshes don't revert the value
+      if (appState.data && appState.data.config) {
+        appState.data.config.request_timeout_seconds = timeout;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to save request timeout:', err);
+    populateRequestTimeout();
+  }
 }
 
 function closeSettingsDialog() {

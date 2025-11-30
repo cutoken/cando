@@ -232,6 +232,14 @@
         <!-- Misc Tab -->
         <div id="tab-misc" class="tab-pane">
           <div class="tab-section">
+            <h3>Request Timeout</h3>
+            <div class="form-group">
+              <label for="requestTimeoutInput">LLM API Timeout: <span id="requestTimeoutValue">90</span>s</label>
+              <input type="range" id="requestTimeoutInput" class="slider" min="90" max="300" step="10" value="90" />
+              <small class="help-text">Time to wait for LLM responses (90-300 seconds)</small>
+            </div>
+          </div>
+          <div class="tab-section">
             <h3>Updates</h3>
             <div class="form-group">
               <button id="checkForUpdatesBtn" class="primary">Check for Updates</button>

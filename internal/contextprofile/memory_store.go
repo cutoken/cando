@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -29,11 +30,12 @@ type memoryEntry struct {
 }
 
 type memoryStore struct {
-	db   *sql.DB
-	path string
+	db     *sql.DB
+	path   string
+	logger *log.Logger
 }
 
-func newMemoryStore(path string) (*memoryStore, error) {
+func newMemoryStore(path string, logger *log.Logger) (*memoryStore, error) {
 	if path == "" {
 		return nil, errors.New("memory store path must be set")
 	}
@@ -47,7 +49,7 @@ func newMemoryStore(path string) (*memoryStore, error) {
 	}
 
 	// Check for database corruption and attempt recovery
-	recoveredDb, err := checkAndRecoverDatabase(db, path)
+	recoveredDb, err := checkAndRecoverDatabase(db, path, logger)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("database recovery failed: %w", err)
@@ -100,12 +102,12 @@ CREATE TABLE IF NOT EXISTS compaction_events (
 		return nil, fmt.Errorf("init compaction_events schema: %w", err)
 	}
 
-	return &memoryStore{db: db, path: path}, nil
+	return &memoryStore{db: db, path: path, logger: logger}, nil
 }
 
 // checkAndRecoverDatabase detects and recovers from database corruption
 // Returns a new *sql.DB if database was recreated, nil if existing db is fine
-func checkAndRecoverDatabase(db *sql.DB, path string) (*sql.DB, error) {
+func checkAndRecoverDatabase(db *sql.DB, path string, logger *log.Logger) (*sql.DB, error) {
 	// Check if database file exists
 	info, err := os.Stat(path)
 	if err != nil {
@@ -121,7 +123,7 @@ func checkAndRecoverDatabase(db *sql.DB, path string) (*sql.DB, error) {
 	// Check 1: Empty file
 	if info.Size() == 0 {
 		isCorrupted = true
-		fmt.Printf("WARNING: Memory database is empty (0 bytes), attempting recovery\n")
+		logger.Printf("WARNING: Memory database is empty (0 bytes), attempting recovery")
 	}
 
 	// Check 2: Verify schema exists
@@ -132,11 +134,11 @@ func checkAndRecoverDatabase(db *sql.DB, path string) (*sql.DB, error) {
 			if errors.Is(err, sql.ErrNoRows) {
 				// No schema - database is effectively empty
 				isCorrupted = true
-				fmt.Printf("WARNING: Memory database has no schema, attempting recovery\n")
+				logger.Printf("WARNING: Memory database has no schema, attempting recovery")
 			} else {
 				// Other error (file might be corrupt)
 				isCorrupted = true
-				fmt.Printf("WARNING: Memory database schema check failed (%v), attempting recovery\n", err)
+				logger.Printf("WARNING: Memory database schema check failed (%v), attempting recovery", err)
 			}
 		}
 	}
@@ -146,18 +148,18 @@ func checkAndRecoverDatabase(db *sql.DB, path string) (*sql.DB, error) {
 	}
 
 	// Attempt recovery: Try WAL checkpoint first
-	fmt.Printf("Attempting WAL checkpoint recovery...\n")
+	logger.Printf("Attempting WAL checkpoint recovery...")
 	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err == nil {
 		// Check if recovery worked
 		var tableName string
 		if err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='memories'").Scan(&tableName); err == nil {
-			fmt.Printf("SUCCESS: Database recovered from WAL checkpoint\n")
+			logger.Printf("SUCCESS: Database recovered from WAL checkpoint")
 			return nil, nil // Use existing connection, it's recovered
 		}
 	}
 
 	// WAL recovery failed - need to recreate database
-	fmt.Printf("WAL recovery failed, recreating database from scratch\n")
+	logger.Printf("WAL recovery failed, recreating database from scratch")
 
 	// Close the database connection
 	if err := db.Close(); err != nil {
@@ -177,7 +179,7 @@ func checkAndRecoverDatabase(db *sql.DB, path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("reopen database after corruption: %w", err)
 	}
 
-	fmt.Printf("Database recreated successfully\n")
+	logger.Printf("Database recreated successfully")
 	return newDb, nil // Return new connection
 }
 

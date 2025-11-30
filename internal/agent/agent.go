@@ -1356,7 +1356,6 @@ func (a *Agent) handlePlanToolResult(args map[string]any, output string) {
 		return
 	}
 	a.storeLastPlan(plan)
-	a.printPlanSnapshot("Plan updated by the model:", plan)
 }
 
 func (a *Agent) showPlan(ctx context.Context) error {

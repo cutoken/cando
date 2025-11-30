@@ -184,8 +184,7 @@ func (s *webServer) run(ctx context.Context) error {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	fmt.Printf("Cando web UI listening at http://%s\n", actualAddr)
-	s.logger.Printf("web UI listening on http://%s\n", actualAddr)
+	s.logger.Printf("web UI listening on http://%s", actualAddr)
 	err = server.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
@@ -968,6 +967,7 @@ type configSnapshot struct {
 	ContextConversationPercent float64 `json:"context_conversation_percent"`
 	ContextProtectRecent       int     `json:"context_protect_recent"`
 	SystemPrompt               string  `json:"system_prompt"`
+	RequestTimeoutSeconds      int     `json:"request_timeout_seconds"`
 }
 
 // getProvidersFromDisk reads current credentials and config from disk to build fresh provider list
@@ -1077,6 +1077,7 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 			ContextConversationPercent: s.agent.cfg.ContextTotalPercent,
 			ContextProtectRecent:       s.agent.cfg.ContextProtectRecent,
 			SystemPrompt:               s.agent.cfg.SystemPrompt,
+			RequestTimeoutSeconds:      s.agent.cfg.RequestTimeoutSeconds,
 		},
 	}
 	if s.workspaceManager != nil {
@@ -1408,6 +1409,7 @@ func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 			ContextProtectRecent       *int     `json:"context_protect_recent"`
 			OpenRouterFreeMode         *bool    `json:"openrouter_free_mode"`
 			AnalyticsEnabled           *bool    `json:"analytics_enabled"`
+			RequestTimeoutSeconds      *int     `json:"request_timeout_seconds"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1447,6 +1449,15 @@ func (s *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 		if req.AnalyticsEnabled != nil {
 			s.agent.cfg.AnalyticsEnabled = req.AnalyticsEnabled
 			analytics.SetEnabled(*req.AnalyticsEnabled)
+		}
+
+		// Update Request Timeout if provided
+		if req.RequestTimeoutSeconds != nil {
+			if *req.RequestTimeoutSeconds < 90 || *req.RequestTimeoutSeconds > 300 {
+				s.respondError(w, r, http.StatusBadRequest, "request_timeout_seconds must be between 90 and 300")
+				return
+			}
+			s.agent.cfg.RequestTimeoutSeconds = *req.RequestTimeoutSeconds
 		}
 
 		// Save to config file
@@ -2597,8 +2608,6 @@ func (s *webServer) triggerRestart(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 
-		// Print to stdout so user sees it in terminal
-		fmt.Println("\n🔄 Restarting Cando...")
 		s.logger.Printf("restarting application...")
 
 		// Use the original binary path captured at startup
@@ -2609,7 +2618,6 @@ func (s *webServer) triggerRestart(w http.ResponseWriter, r *http.Request) {
 			var err error
 			binary, err = os.Executable()
 			if err != nil {
-				fmt.Printf("❌ Failed to get executable: %v\n", err)
 				s.logger.Printf("failed to get executable: %v", err)
 				os.Exit(1)
 			}
@@ -2624,7 +2632,6 @@ func (s *webServer) triggerRestart(w http.ResponseWriter, r *http.Request) {
 		// syscall.Exec replaces current process, no need for graceful shutdown
 		// The OS will clean up the listening socket
 		if err := execBinary(binary, os.Args, env); err != nil {
-			fmt.Printf("❌ Failed to restart: %v\n", err)
 			s.logger.Printf("failed to exec: %v", err)
 			os.Exit(1)
 		}

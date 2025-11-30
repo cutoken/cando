@@ -221,7 +221,7 @@ func (t *BackgroundProcessTool) handleStart(ctx context.Context, args map[string
 		t.mu.Unlock()
 	}()
 
-	resp, err := json.Marshal(map[string]any{
+	resp, err := jsonMarshalNoEscape(map[string]any{
 		"job_id":     jobID,
 		"status":     meta.Status,
 		"pid":        meta.PID,
@@ -275,7 +275,7 @@ func (t *BackgroundProcessTool) handleList(args map[string]any) (string, error) 
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].StartedAt.After(list[j].StartedAt)
 	})
-	resp, err := json.Marshal(list)
+	resp, err := jsonMarshalNoEscape(list)
 	if err != nil {
 		return "", err
 	}
@@ -318,7 +318,7 @@ func (t *BackgroundProcessTool) handleLogs(args map[string]any) (string, error) 
 		}
 		lines = filtered
 	}
-	resp, err := json.Marshal(map[string]any{
+	resp, err := jsonMarshalNoEscape(map[string]any{
 		"job_id": jobID,
 		"stream": stream,
 		"lines":  lines,
@@ -343,7 +343,7 @@ func (t *BackgroundProcessTool) handleKill(args map[string]any) (string, error) 
 	if err := cmd.Process.Kill(); err != nil {
 		return "", fmt.Errorf("kill failed: %w", err)
 	}
-	resp, err := json.Marshal(map[string]any{
+	resp, err := jsonMarshalNoEscape(map[string]any{
 		"job_id": jobID,
 		"status": "killed",
 	})

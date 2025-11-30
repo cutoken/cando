@@ -171,7 +171,7 @@ func (a *ApplyPatchTool) validatePath(path string) error {
 		return fmt.Errorf("patch path %q must be relative", trimmed)
 	}
 	if strings.HasPrefix(filepath.Clean(trimmed), "..") {
-		return fmt.Errorf("patch path %q escapes workspace", trimmed)
+		return fmt.Errorf("patch path %q attempts to escape workspace (contains ..)", trimmed)
 	}
 	_, err := a.guard.Resolve(trimmed)
 	return err

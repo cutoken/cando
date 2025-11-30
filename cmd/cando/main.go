@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -325,8 +327,17 @@ func main() {
 		listenPort = *port
 	}
 
-	// Find available port
-	listenAddr := findAvailablePort(listenPort)
+	// Check if port is already in use by another cando instance
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", listenPort)
+	if existingCando := checkExistingInstance(listenAddr); existingCando {
+		fmt.Printf("Cando is already running at http://%s\n", listenAddr)
+		fmt.Println("Opening browser...")
+		openBrowser("http://" + listenAddr)
+		return
+	}
+
+	// Find available port if preferred port is taken by something else
+	listenAddr = findAvailablePort(listenPort)
 
 	// Start web UI
 	fmt.Printf("Starting Cando...\n")
@@ -359,6 +370,41 @@ func findAvailablePort(startPort int) string {
 	}
 	// Fallback to let OS pick
 	return "127.0.0.1:0"
+}
+
+// checkExistingInstance checks if cando is already running on the given address
+// by calling /api/health endpoint
+func checkExistingInstance(addr string) bool {
+	// First check if port is in use at all
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	if err != nil {
+		// Port not in use
+		return false
+	}
+	conn.Close()
+
+	// Port is in use, check if it's cando via health endpoint
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get("http://" + addr + "/api/health")
+	if err != nil {
+		// Something is on the port but not responding to HTTP
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	// Check response body for cando signature
+	var health struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+		return false
+	}
+
+	return health.Status == "ok"
 }
 
 func projectStorageRoot(workspace string) (string, error) {

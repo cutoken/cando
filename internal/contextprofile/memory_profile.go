@@ -179,7 +179,7 @@ func newMemoryProfile(deps Dependencies) (*memoryProfile, error) {
 	totalLimit := deps.Config.CalculateConversationThreshold(provider, model)
 	protected := deps.Config.ContextProtectRecent
 
-	store, err := newMemoryStore(deps.Config.MemoryStorePath)
+	store, err := newMemoryStore(deps.Config.MemoryStorePath, deps.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +233,7 @@ func (p *memoryProfile) Prepare(ctx context.Context, conv *state.Conversation) (
 			}
 		}
 
-		stats, err := p.compactOverflow(ctx, messages, total, forced)
+		stats, err := p.compactOverflow(ctx, messages, total)
 		if err != nil {
 			return Prepared{}, err
 		}
@@ -244,10 +244,8 @@ func (p *memoryProfile) Prepare(ctx context.Context, conv *state.Conversation) (
 				mutated = true
 				if forced {
 					p.logger.Printf("FORCED context compaction: %d -> %d chars across %d messages (considered=%d)", stats.before, stats.after, stats.compacted, stats.considered)
-					fmt.Printf("(forced compaction reduced context from %d to %d chars; %d messages summarized)\n", stats.before, stats.after, stats.compacted)
 				} else {
 					p.logger.Printf("context compaction: %d -> %d chars across %d messages (considered=%d)", stats.before, stats.after, stats.compacted, stats.considered)
-					fmt.Printf("(compaction reduced context from %d to %d chars; %d messages summarized)\n", stats.before, stats.after, stats.compacted)
 				}
 			} else {
 				if forced {
@@ -454,7 +452,7 @@ func (p *memoryProfile) compactTurn(ctx context.Context, messages []state.Messag
 	return delta, true, nil
 }
 
-func (p *memoryProfile) compactOverflow(ctx context.Context, messages []state.Message, total int, forced bool) (*compactionStats, error) {
+func (p *memoryProfile) compactOverflow(ctx context.Context, messages []state.Message, total int) (*compactionStats, error) {
 	startTime := time.Now()
 	stats := &compactionStats{
 		before: total,
@@ -501,12 +499,8 @@ func (p *memoryProfile) compactOverflow(ctx context.Context, messages []state.Me
 	stats.considered = len(compactableTurns)
 
 	// Compact turns from oldest to newest
+	// Once triggered, compact ALL eligible turns (protect_recent controls what's off-limits)
 	for i, turn := range compactableTurns {
-		// When forcing, skip threshold check and compact all eligible turns
-		if !forced && current <= p.conversationThreshold {
-			p.logger.Printf("compaction: stopped at turn %d/%d (current=%d <= threshold=%d)", i, len(compactableTurns), current, p.conversationThreshold)
-			break
-		}
 		p.logger.Printf("compaction: attempting turn %d/%d (startIdx=%d, endIdx=%d, current=%d)", i+1, len(compactableTurns), turn.startIdx, turn.endIdx, current)
 		_, changed, err := p.compactTurn(ctx, messages, turn)
 		if err != nil {
