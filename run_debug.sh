@@ -11,12 +11,21 @@ export CANDO_PORT=4000
 export CANDO_CONFIG_DIR="/tmp/cando-test"
 
 # Ensure the test config directory exists
-mkdir -p "$CANDO_CONFIG_DIR"
+if [ -f "$CANDO_CONFIG_DIR" ]; then
+    rm -f "$CANDO_CONFIG_DIR"
+fi
+mkdir -p "$CANDO_CONFIG_DIR" 2>/dev/null || true
 
 echo "🔧 Starting cando in debug mode:"
 echo "   DEV_MODE: $DEV_MODE"
 echo "   CANDO_PORT: $CANDO_PORT"
 echo "   CANDO_CONFIG_DIR: $CANDO_CONFIG_DIR"
+echo ""
+
+# Build first
+echo "🔨 Building cando..."
+go build -o ./tmp/cando ./cmd/cando || exit 1
+echo "✓ Build complete"
 echo ""
 
 # Check if air is installed

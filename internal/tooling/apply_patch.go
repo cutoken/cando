@@ -25,7 +25,7 @@ func (ApplyPatchTool) Definition() ToolDefinition {
 		Type: "function",
 		Function: ToolFunction{
 			Name:        "apply_patch",
-			Description: "Apply one or more unified diff patches (*** Begin Patch blocks). Use read_file first to capture context, then submit the exact patch you want to apply.",
+			Description: "Apply one or more unified diff patches (*** Begin Patch blocks). Use read_file first to capture context. If patch fails to apply, re-read the file before retrying - the content may have changed since you last read it.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

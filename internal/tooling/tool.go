@@ -571,14 +571,6 @@ func (s *ShellTool) Call(ctx context.Context, args map[string]any) (string, erro
 	}
 
 	key := s.commandKey(resolvedDir, rawCmd)
-	count := s.recordCommand(key)
-	var warning string
-	switch {
-	case count > 5:
-		return "", errors.New("LLM went nuts repeating the same shell command")
-	case count > 3:
-		warning = fmt.Sprintf("What the fuck are you doing bro? This command has been repeated %d times.", count)
-	}
 	timeout := s.timeout
 	if override, ok := args["timeout_seconds"]; ok {
 		switch v := override.(type) {
@@ -641,10 +633,16 @@ func (s *ShellTool) Call(ctx context.Context, args map[string]any) (string, erro
 			logging.ErrorLog("shell: command failed: %v", runErr)
 			result["error"] = runErr.Error()
 		}
-	}
-	if warning != "" {
-		logging.ErrorLog("shell: %s", warning)
-		result["warning"] = warning
+	} else {
+		// Only count successful commands toward repeat detection
+		// Failed commands should be retryable without hitting the limit
+		count := s.recordCommand(key)
+		switch {
+		case count > 5:
+			result["warning"] = "This exact command has succeeded 5+ times. Consider if you're stuck in a loop."
+		case count > 3:
+			result["warning"] = fmt.Sprintf("This command has succeeded %d times. Are you repeating unnecessarily?", count)
+		}
 	}
 	data, err := json.Marshal(result)
 	if err != nil {

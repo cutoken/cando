@@ -25,6 +25,7 @@ import (
 	"cando/internal/config"
 	"cando/internal/contextprofile"
 	"cando/internal/credentials"
+	"cando/internal/llm"
 	"cando/internal/logging"
 	"cando/internal/state"
 	"cando/internal/tooling"
@@ -152,6 +153,7 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/folder/create", s.handleFolderCreate)
 	mux.HandleFunc("/api/branch", s.handleBranch)
 	mux.HandleFunc("/api/project/instructions", s.handleProjectInstructions)
+	mux.HandleFunc("/api/plan-mode", s.handlePlanMode)
 	mux.HandleFunc("/api/health", s.handleHealth)
 	mux.HandleFunc("/api/update-check", s.handleUpdateCheck)
 	mux.HandleFunc("/api/update", s.handleUpdate)
@@ -192,10 +194,22 @@ func (s *webServer) run(ctx context.Context) error {
 }
 
 func (s *webServer) logRequests(next http.Handler) http.Handler {
+	// High-frequency polling endpoints to skip logging
+	skipLogPaths := map[string]bool{
+		"/api/files/tree": true,
+		"/api/health":     true,
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		workspace := s.getWorkspaceFromRequest(r)
 		next.ServeHTTP(w, r)
+
+		// Skip logging for polling endpoints to reduce noise
+		if skipLogPaths[r.URL.Path] {
+			return
+		}
+
 		duration := time.Since(start).Round(time.Millisecond)
 		if workspace != "" {
 			s.logger.Printf("[ws:%s] [%s] %s %s (%s)", workspace, r.RemoteAddr, r.Method, r.URL.Path, duration)
@@ -556,8 +570,17 @@ func (s *webServer) handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, _, err := s.agent.respondWithCallbacksForWorkspace(r.Context(), content, sendEvent, wsCtx); err != nil {
-		s.logRequestError(r, http.StatusInternalServerError, fmt.Sprintf("stream request failed: %v", err))
-		sendEvent("error", map[string]string{"message": err.Error()})
+		// Check if this is a structured ProviderError (event may already have been sent by agent)
+		if pe, ok := llm.IsProviderError(err); ok {
+			// Log with provider context instead of generic ERROR
+			s.logger.Printf("[provider] %s error: %s", pe.Provider, pe.Error())
+			// Send provider_error event (in case it wasn't sent during retry loop)
+			sendEvent("provider_error", buildProviderErrorPayload(pe))
+		} else {
+			// Generic error handling
+			s.logRequestError(r, http.StatusInternalServerError, fmt.Sprintf("stream request failed: %v", err))
+			sendEvent("error", map[string]string{"message": err.Error()})
+		}
 		return
 	}
 
@@ -914,6 +937,7 @@ type sessionPayload struct {
 	Messages              []state.Message   `json:"messages"`
 	Thinking              bool              `json:"thinking"`
 	ForceThinking         bool              `json:"force_thinking"`
+	PlanMode              bool              `json:"plan_mode"`
 	SystemPrompt          string            `json:"system_prompt"`
 	Running               bool              `json:"running"`
 	ContextChars          int               `json:"context_chars"`
@@ -1089,6 +1113,7 @@ func (s *webServer) buildSessionPayload(ctx context.Context, workspacePath strin
 	payload.ContextChars = conversationCharCount(messages)
 	payload.Plan = plan
 	payload.Workdir = wsCtx.root
+	payload.PlanMode = wsCtx.planMode
 	if planErr != nil {
 		payload.PlanError = planErr.Error()
 	}
@@ -1972,6 +1997,41 @@ func (s *webServer) handleProjectInstructions(w http.ResponseWriter, r *http.Req
 		}
 
 		s.writeJSON(w, r, map[string]string{"status": "saved"})
+
+	default:
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *webServer) handlePlanMode(w http.ResponseWriter, r *http.Request) {
+	workspacePath := r.Header.Get("X-Workspace")
+	if workspacePath == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace header required")
+		return
+	}
+
+	// Get or create workspace context
+	wsCtx, err := s.agent.GetOrCreateWorkspaceContext(workspacePath)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to get workspace: %v", err))
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		s.writeJSON(w, r, map[string]bool{"planMode": wsCtx.planMode})
+
+	case http.MethodPost:
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		wsCtx.planMode = req.Enabled
+		s.writeJSON(w, r, map[string]bool{"planMode": wsCtx.planMode})
 
 	default:
 		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")

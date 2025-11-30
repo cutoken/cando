@@ -32,6 +32,8 @@ import (
 	"cando/internal/state"
 	"cando/internal/tooling"
 	"cando/internal/zai"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Version is set via -ldflags during build
@@ -110,12 +112,14 @@ func main() {
 		log.Fatalf("Failed to create config directory: %v", err)
 	}
 	logPath := filepath.Join(configDir, "cando.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		log.Fatalf("Failed to open log file: %v", err)
+	logWriter := &lumberjack.Logger{
+		Filename:   logPath,
+		MaxSize:    5, // MB
+		MaxBackups: 5,
+		Compress:   true,
 	}
-	defer logFile.Close()
-	logger := log.New(logFile, "cando ", log.LstdFlags|log.Lmicroseconds)
+	defer logWriter.Close()
+	logger := log.New(logWriter, "cando ", log.LstdFlags|log.Lmicroseconds)
 
 	// Set the logging package's logger to use the file instead of stdout
 	logging.Logger = logger

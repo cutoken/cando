@@ -12,7 +12,6 @@ const ui = {
   systemPromptInput: null,
   statusText: null,
   statusMeta: null,
-  thinkingStatus: null,
   contextProgressBar: null,
   contextProgressFill: null,
   compactionHistoryBtn: null,
@@ -51,6 +50,7 @@ const ui = {
   newChatBtn: null,
   helpBtn: null,
   analyticsToggle: null,
+  planModeBtn: null,
 };
 
 const appState = {
@@ -69,7 +69,6 @@ async function initUI() {
   ui.thinkingToggle = document.getElementById('thinkingToggle');
   ui.forceThinkingToggle = document.getElementById('forceThinkingToggle');
   ui.systemPromptInput = document.getElementById('systemPromptInput');
-  ui.thinkingStatus = document.getElementById('thinkingStatus');
   ui.statusText = document.getElementById('statusText');
   ui.statusMeta = document.getElementById('statusMeta');
   ui.contextProgressBar = document.getElementById('contextProgressBar');
@@ -111,6 +110,7 @@ async function initUI() {
   ui.newChatBtn = document.getElementById('newChatBtn');
   ui.helpBtn = document.getElementById('helpBtn');
   ui.analyticsToggle = document.getElementById('analyticsToggle');
+  ui.planModeBtn = document.getElementById('planModeBtn');
 
   ui.promptForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -133,6 +133,9 @@ async function initUI() {
   ui.thinkingToggle.addEventListener('click', toggleThinking);
   if (ui.forceThinkingToggle) {
     ui.forceThinkingToggle.addEventListener('click', toggleForceThinking);
+  }
+  if (ui.planModeBtn) {
+    ui.planModeBtn.addEventListener('click', togglePlanMode);
   }
   if (ui.systemPromptInput) {
     ui.systemPromptInput.addEventListener('blur', updateSystemPrompt);
@@ -359,6 +362,9 @@ function render() {
   if (ui.forceThinkingToggle) {
     ui.forceThinkingToggle.textContent = appState.data.force_thinking ? 'On' : 'Off';
     ui.forceThinkingToggle.classList.toggle('active', appState.data.force_thinking);
+  }
+  if (ui.planModeBtn) {
+    ui.planModeBtn.classList.toggle('active', appState.data.plan_mode);
   }
   if (ui.systemPromptInput && ui.systemPromptInput.value !== appState.data.system_prompt) {
     ui.systemPromptInput.value = appState.data.system_prompt || '';
@@ -934,6 +940,7 @@ async function createBranchFromEdit(editIndex, newContent) {
     const reader = streamRes.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let hadError = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -948,6 +955,9 @@ async function createBranchFromEdit(editIndex, newContent) {
         const data = line.slice(6);
         try {
           const event = JSON.parse(data);
+          if (event.type === 'error' || event.type === 'provider_error') {
+            hadError = true;
+          }
           handleStreamEvent(event);
         } catch (e) {
           console.error('Failed to parse SSE event:', e, data);
@@ -956,7 +966,9 @@ async function createBranchFromEdit(editIndex, newContent) {
     }
 
     removeThinkingPlaceholder();
-    setStatus('Ready.');
+    if (!hadError) {
+      setStatus('Ready.');
+    }
   } catch (err) {
     console.error('Branch creation failed:', err);
     setStatus(err.message || 'Failed to create branch');
@@ -1118,15 +1130,8 @@ function summarizePlanSteps(steps = []) {
 function updateThinkingIndicatorVisibility() {
   if (!ui.thinkingIndicator) return;
 
-  // Always show the entire indicator (workspace, CANDO, status)
+  // Always show the indicator, but only animate when busy
   ui.thinkingIndicator.classList.remove('hidden');
-
-  // Update status text based on state
-  if (ui.thinkingStatus) {
-    ui.thinkingStatus.textContent = appState.busy ? ui.thinkingStatus.textContent : 'Ready';
-  }
-
-  // Only animate (pulse) when busy
   ui.thinkingIndicator.classList.toggle('busy', appState.busy);
 }
 
@@ -1217,6 +1222,7 @@ async function submitPrompt() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let hadError = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -1231,6 +1237,10 @@ async function submitPrompt() {
         const data = line.slice(6);
         try {
           const event = JSON.parse(data);
+          // Track if we received an error event
+          if (event.type === 'error' || event.type === 'provider_error') {
+            hadError = true;
+          }
           handleStreamEvent(event);
         } catch (e) {
           console.error('Failed to parse SSE event:', e, data);
@@ -1239,8 +1249,10 @@ async function submitPrompt() {
     }
 
     removeThinkingPlaceholder();
-    // No need to refresh - stream events already updated state
-    setStatus('Ready.');
+    // Don't overwrite error status messages
+    if (!hadError) {
+      setStatus('Ready.');
+    }
   } catch (err) {
     console.error(err);
     removeThinkingPlaceholder();
@@ -1279,16 +1291,10 @@ function appendUserMessage(content) {
 }
 
 function appendThinkingPlaceholder() {
-  if (appState.busy && ui.thinkingStatus && !ui.thinkingStatus.textContent) {
-    ui.thinkingStatus.textContent = 'Working...';
-  }
   updateThinkingIndicatorVisibility();
 }
 
 function removeThinkingPlaceholder() {
-  if (ui.thinkingStatus && !appState.busy) {
-    ui.thinkingStatus.textContent = '';
-  }
   updateThinkingIndicatorVisibility();
 }
 
@@ -1296,12 +1302,12 @@ function handleStreamEvent(event) {
   switch (event.type) {
     case 'tool_call_started':
       console.log('Tool call started:', event.data);
-      setStatus('Working');
+      setStatus('Working...');
       appendStreamingToolCall(event.data);
       break;
     case 'tool_call_completed':
       console.log('Tool call completed:', event.data);
-      setStatus('Working');
+      setStatus('Working...');
       updateStreamingToolResult(event.data);
       break;
     case 'request_retry': {
@@ -1316,7 +1322,7 @@ function handleStreamEvent(event) {
     }
     case 'assistant_message':
       console.log('Assistant message:', event.data);
-      setStatus('Ready.');
+      // Status is set at stream end with hadError check - don't set here
 
       // Construct message object
       const assistantMsg = {
@@ -1428,6 +1434,42 @@ function handleStreamEvent(event) {
       console.error('Stream error:', event.data);
       setStatus(`Error: ${event.data.message}`);
       break;
+    case 'provider_error': {
+      const data = event.data || {};
+      const type = data.type || 'unknown';
+      const provider = (data.provider || 'Provider').toUpperCase();
+      const resetAt = data.reset_at;
+
+      let statusMsg = '';
+      switch (type) {
+        case 'quota_exceeded':
+          statusMsg = `${provider}: Usage limit reached.`;
+          if (resetAt) statusMsg += ` Resets at ${resetAt}`;
+          break;
+        case 'insufficient_credit':
+          statusMsg = `${provider}: Insufficient credits. Please add balance.`;
+          break;
+        case 'rate_limit':
+          statusMsg = `${provider}: Rate limited.`;
+          if (resetAt) statusMsg += ` Try again at ${resetAt}`;
+          break;
+        case 'auth':
+          statusMsg = `${provider}: Invalid API key. Check credentials.`;
+          break;
+        case 'provider_down':
+          statusMsg = `${provider}: Service temporarily unavailable.`;
+          break;
+        case 'moderation':
+          statusMsg = `${provider}: Content flagged by moderation.`;
+          break;
+        default:
+          statusMsg = `${provider}: ${data.message || 'Unknown error'}`;
+      }
+
+      console.error('Provider error:', data);
+      setStatus(statusMsg);
+      break;
+    }
   }
 }
 
@@ -1901,6 +1943,25 @@ async function toggleForceThinking() {
   render();
 }
 
+async function togglePlanMode() {
+  if (!appState.data || !appState.data.workdir) return;
+  const next = !appState.data.plan_mode;
+  const res = await fetch('/api/plan-mode', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Workspace': appState.data.workdir,
+    },
+    body: JSON.stringify({ enabled: next }),
+  });
+  if (!res.ok) {
+    setStatus('Plan mode toggle failed');
+    return;
+  }
+  appState.data.plan_mode = next;
+  render();
+}
+
 async function toggleAnalytics() {
   if (!ui.analyticsToggle) return;
   const enabled = ui.analyticsToggle.checked;
@@ -1936,7 +1997,6 @@ async function switchProvider(key) {
   if (!key || !appState.data) return;
   if (key === appState.data.current_provider) return;
   try {
-    setStatus('Switching model…');
     if (ui.modelSelect) ui.modelSelect.disabled = true;
     const res = await fetch('/api/provider', {
       method: 'POST',
@@ -1949,7 +2009,6 @@ async function switchProvider(key) {
     }
     appState.data = await res.json();
     render();
-    setStatus(`Using ${appState.data.model}`);
   } catch (err) {
     console.error(err);
     setStatus(err.message || 'Failed to switch model');
@@ -1992,13 +2051,6 @@ function setBusy(flag, message) {
     ui.cancelBtn.style.display = 'none';
   }
 
-  if (ui.statusText) {
-    ui.statusText.classList.toggle('hidden', flag);
-  }
-  if (!flag && ui.thinkingStatus) {
-    ui.thinkingStatus.textContent = '';
-  }
-
   // Clean up streaming-tools class when turn ends
   if (!flag && ui.messages) {
     const streamingMsg = ui.messages.querySelector('.streaming-tools');
@@ -2012,11 +2064,8 @@ function setBusy(flag, message) {
 }
 
 function setStatus(message) {
-  const indicatorActive = appState.busy && ui.thinkingIndicator && !ui.thinkingIndicator.classList.contains('hidden');
-  if (indicatorActive && ui.thinkingStatus) {
-    ui.thinkingStatus.textContent = message || '';
-  } else if (ui.statusText) {
-    ui.statusText.textContent = message;
+  if (ui.statusText) {
+    ui.statusText.textContent = message || '';
   }
 }
 
@@ -2239,7 +2288,6 @@ async function saveSystemPrompt() {
   if (!ui.systemPromptInput) return;
   const prompt = ui.systemPromptInput.value;
   try {
-    setStatus('Saving system prompt…');
     const res = await fetch('/api/system-prompt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2253,7 +2301,6 @@ async function saveSystemPrompt() {
     if (appState.data?.config) {
       appState.data.config.system_prompt = data.system_prompt || prompt;
     }
-    setStatus('System prompt saved.');
   } catch (err) {
     console.error(err);
     alert(err.message || 'Failed to save system prompt.');
@@ -2523,7 +2570,6 @@ async function saveProviderModelGeneric(provider, modelType, modelId) {
   }
 
   try {
-    setStatus(`Saving ${provider} ${modelType} model…`);
     const res = await fetch('/api/provider/model', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2531,7 +2577,6 @@ async function saveProviderModelGeneric(provider, modelType, modelId) {
     });
 
     if (res.ok) {
-      setStatus(`Model updated: ${modelId}`);
 
       // Show saved indicator
       const elements = getModelElements(modelType);

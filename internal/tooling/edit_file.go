@@ -22,7 +22,7 @@ func (EditFileTool) Definition() ToolDefinition {
 		Type: "function",
 		Function: ToolFunction{
 			Name:        "edit_file",
-			Description: "Perform exact string replacement in a file. The old_string must match exactly (including whitespace and indentation). Use read_file first to see the current content. This is safer than write_file for making targeted changes.",
+			Description: "Perform exact string replacement in a file. The old_string must match exactly (including whitespace and indentation). Use read_file first to see the current content. If this fails with 'old_string not found', re-read the file before retrying - the content may have changed. This is safer than write_file for making targeted changes.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

@@ -6,8 +6,8 @@ require (
 	github.com/PuerkitoBio/goquery v1.9.1
 	github.com/c-bata/go-prompt v0.2.6
 	github.com/charmbracelet/glamour v0.10.0
-	github.com/joho/godotenv v1.5.1
 	golang.org/x/term v0.37.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.28.0
 )
