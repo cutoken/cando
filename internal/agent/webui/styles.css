@@ -4703,3 +4703,56 @@ button.danger:hover {
   background: var(--border);
   margin: 4px 0;
 }
+
+/* ========== CUSTOM ALERT, PROMPT & CONFIRM DIALOGS ========== */
+.alert-dialog,
+.prompt-dialog,
+.confirm-dialog {
+  max-width: 400px;
+}
+
+.alert-dialog .dialog-body,
+.prompt-dialog .dialog-body,
+.confirm-dialog .dialog-body {
+  padding: 1.25rem 1.5rem;
+}
+
+.alert-dialog .dialog-body p,
+.prompt-dialog .dialog-body p,
+.confirm-dialog .dialog-body p {
+  margin: 0 0 0.5rem 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.alert-dialog .dialog-body p:last-child,
+.confirm-dialog .dialog-body p:last-child {
+  margin-bottom: 0;
+}
+
+.prompt-dialog .prompt-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.prompt-dialog .prompt-input:focus {
+  border-color: var(--accent);
+}
+
+.alert-dialog .form-actions,
+.prompt-dialog .form-actions,
+.confirm-dialog .form-actions {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  margin: 0;
+  gap: 0.75rem;
+}

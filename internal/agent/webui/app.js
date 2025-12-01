@@ -84,6 +84,175 @@ const appState = {
   contextMenuTarget: null, // Current right-clicked file/folder for context menu
 };
 
+// Custom alert dialog - returns a Promise that resolves when user clicks OK
+function showAlert(message, title = 'Alert') {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('alertDialog');
+    const titleEl = document.getElementById('alertDialogTitle');
+    const messageEl = document.getElementById('alertDialogMessage');
+    const okBtn = document.getElementById('alertDialogOk');
+    const closeBtn = document.getElementById('closeAlertDialog');
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    dialog.style.display = 'flex';
+
+    const cleanup = () => {
+      dialog.style.display = 'none';
+      okBtn.removeEventListener('click', handleOk);
+      closeBtn.removeEventListener('click', handleOk);
+      dialog.removeEventListener('click', handleBackdrop);
+      document.removeEventListener('keydown', handleKey);
+    };
+
+    const handleOk = () => {
+      cleanup();
+      resolve();
+    };
+
+    const handleBackdrop = (e) => {
+      if (e.target === dialog) {
+        cleanup();
+        resolve();
+      }
+    };
+
+    const handleKey = (e) => {
+      if (e.key === 'Escape' || e.key === 'Enter') {
+        cleanup();
+        resolve();
+      }
+    };
+
+    okBtn.addEventListener('click', handleOk);
+    closeBtn.addEventListener('click', handleOk);
+    dialog.addEventListener('click', handleBackdrop);
+    document.addEventListener('keydown', handleKey);
+    okBtn.focus();
+  });
+}
+
+// Custom prompt dialog - returns a Promise that resolves with input value or null if cancelled
+function showPrompt(message, defaultValue = '', title = 'Input') {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('promptDialog');
+    const titleEl = document.getElementById('promptDialogTitle');
+    const messageEl = document.getElementById('promptDialogMessage');
+    const input = document.getElementById('promptDialogInput');
+    const okBtn = document.getElementById('promptDialogOk');
+    const cancelBtn = document.getElementById('promptDialogCancel');
+    const closeBtn = document.getElementById('closePromptDialog');
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    input.value = defaultValue;
+    dialog.style.display = 'flex';
+
+    const cleanup = () => {
+      dialog.style.display = 'none';
+      okBtn.removeEventListener('click', handleOk);
+      cancelBtn.removeEventListener('click', handleCancel);
+      closeBtn.removeEventListener('click', handleCancel);
+      dialog.removeEventListener('click', handleBackdrop);
+      document.removeEventListener('keydown', handleKey);
+    };
+
+    const handleOk = () => {
+      cleanup();
+      resolve(input.value);
+    };
+
+    const handleCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    const handleBackdrop = (e) => {
+      if (e.target === dialog) {
+        cleanup();
+        resolve(null);
+      }
+    };
+
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        cleanup();
+        resolve(null);
+      } else if (e.key === 'Enter') {
+        cleanup();
+        resolve(input.value);
+      }
+    };
+
+    okBtn.addEventListener('click', handleOk);
+    cancelBtn.addEventListener('click', handleCancel);
+    closeBtn.addEventListener('click', handleCancel);
+    dialog.addEventListener('click', handleBackdrop);
+    document.addEventListener('keydown', handleKey);
+    input.focus();
+    input.select();
+  });
+}
+
+// Custom confirm dialog - returns a Promise that resolves to true (OK) or false (Cancel)
+function showConfirm(message, title = 'Confirm') {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('confirmDialog');
+    const titleEl = document.getElementById('confirmDialogTitle');
+    const messageEl = document.getElementById('confirmDialogMessage');
+    const okBtn = document.getElementById('confirmDialogOk');
+    const cancelBtn = document.getElementById('confirmDialogCancel');
+    const closeBtn = document.getElementById('closeConfirmDialog');
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    dialog.style.display = 'flex';
+
+    const cleanup = () => {
+      dialog.style.display = 'none';
+      okBtn.removeEventListener('click', handleOk);
+      cancelBtn.removeEventListener('click', handleCancel);
+      closeBtn.removeEventListener('click', handleCancel);
+      dialog.removeEventListener('click', handleBackdrop);
+      document.removeEventListener('keydown', handleKey);
+    };
+
+    const handleOk = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    const handleCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    const handleBackdrop = (e) => {
+      if (e.target === dialog) {
+        cleanup();
+        resolve(false);
+      }
+    };
+
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        cleanup();
+        resolve(false);
+      } else if (e.key === 'Enter') {
+        cleanup();
+        resolve(true);
+      }
+    };
+
+    okBtn.addEventListener('click', handleOk);
+    cancelBtn.addEventListener('click', handleCancel);
+    closeBtn.addEventListener('click', handleCancel);
+    dialog.addEventListener('click', handleBackdrop);
+    document.addEventListener('keydown', handleKey);
+    okBtn.focus();
+  });
+}
+
 async function initUI() {
   ui.messages = document.getElementById('messages');
   ui.promptForm = document.getElementById('promptForm');
@@ -905,7 +1074,7 @@ function editUserMessage(wrapper, msg) {
     }
 
     // Show warning dialog
-    const confirmed = confirm('This will create a new session from this edit. Continue?');
+    const confirmed = await showConfirm('This will create a new session from this edit. Continue?', 'Create New Session');
     if (!confirmed) {
       contentWrapper.innerHTML = renderMarkdown(originalContent);
       return;
@@ -1658,7 +1827,7 @@ async function switchState(key) {
 }
 
 async function createState() {
-  const key = prompt('Name for the new session:');
+  const key = await showPrompt('Name for the new session:', '', 'New Session');
   if (!key) return;
   setBusy(true, 'Creating session…');
   try {
@@ -1669,7 +1838,7 @@ async function createState() {
 }
 
 async function clearState() {
-  if (!confirm('Clear the current conversation history?')) return;
+  if (!await showConfirm('Clear the current conversation history?', 'Clear History')) return;
   setBusy(true, 'Clearing history…');
   try {
     await mutateState({ action: 'clear' });
@@ -1681,7 +1850,7 @@ async function clearState() {
 async function deleteState() {
   const current = appState.data?.current_key;
   if (!current) return;
-  if (!confirm(`Delete session "${current}" permanently?`)) return;
+  if (!await showConfirm(`Delete session "${current}" permanently?`, 'Delete Session')) return;
   setBusy(true, 'Deleting session…');
   try {
     await mutateState({ action: 'delete', key: current });
@@ -2443,7 +2612,7 @@ async function saveSystemPrompt() {
     }
   } catch (err) {
     console.error(err);
-    alert(err.message || 'Failed to save system prompt.');
+    showAlert(err.message || 'Failed to save system prompt.');
   }
 }
 
@@ -3082,11 +3251,11 @@ async function switchActiveProvider(providerKey) {
       initializeProviderAccordions();
     } else {
       const error = await res.text();
-      alert(`Failed to switch provider: ${error}`);
+      showAlert(`Failed to switch provider: ${error}`);
     }
   } catch (err) {
     console.error('Failed to switch provider:', err);
-    alert('Failed to switch provider');
+    showAlert('Failed to switch provider');
   }
 }
 
@@ -3111,7 +3280,7 @@ async function saveApiKey(provider) {
   const inputId = provider === 'zai' ? 'zaiApiKey' : 'openrouterApiKey';
   const input = document.getElementById(inputId);
   if (!input || !input.value.trim()) {
-    alert('Please enter a valid API key');
+    showAlert('Please enter a valid API key');
     return;
   }
 
@@ -3156,7 +3325,7 @@ async function saveApiKey(provider) {
       }
 
       // Show success message from server
-      alert(data.message || `${provider.toUpperCase()} provider configured successfully!`);
+      showAlert(data.message || `${provider.toUpperCase()} provider configured successfully!`);
 
       // Refresh session to get updated provider list
       await refreshSession();
@@ -3164,11 +3333,11 @@ async function saveApiKey(provider) {
       updateProviderStatus();
     } else {
       const error = await res.text();
-      alert(`Failed to save API key: ${error}`);
+      showAlert(`Failed to save API key: ${error}`);
     }
   } catch (err) {
     console.error('Save API key failed:', err);
-    alert('Failed to save API key. Check console for details.');
+    showAlert('Failed to save API key. Check console for details.');
   }
 }
 
@@ -3291,15 +3460,15 @@ async function saveCompactionConfig() {
   const protectRecent = parseInt(document.getElementById('compactionProtectRecent').value);
 
   if (isNaN(messagePercentInt) || messagePercentInt <= 0 || messagePercentInt > 10) {
-    alert('Message threshold must be between 1% and 10%');
+    showAlert('Message threshold must be between 1% and 10%');
     return;
   }
   if (isNaN(conversationPercentInt) || conversationPercentInt <= 0 || conversationPercentInt > 80) {
-    alert('Conversation threshold must be between 1% and 80%');
+    showAlert('Conversation threshold must be between 1% and 80%');
     return;
   }
   if (isNaN(protectRecent) || protectRecent < 0) {
-    alert('Protected recent must be 0 or greater');
+    showAlert('Protected recent must be 0 or greater');
     return;
   }
 
@@ -3319,16 +3488,16 @@ async function saveCompactionConfig() {
     });
 
     if (res.ok) {
-      alert('Compaction settings saved successfully');
+      showAlert('Compaction settings saved successfully');
       await refreshSession();
       refreshCompactionInfo();
     } else {
       const error = await res.text();
-      alert(`Failed to save settings: ${error}`);
+      showAlert(`Failed to save settings: ${error}`);
     }
   } catch (err) {
     console.error('Save compaction settings failed:', err);
-    alert('Failed to save settings. Check console for details.');
+    showAlert('Failed to save settings. Check console for details.');
   }
 }
 
@@ -4076,7 +4245,7 @@ async function reopenProject(path) {
     await switchWorkspace(path);
   } catch (err) {
     console.error('Reopen project error:', err);
-    alert('Failed to reopen project: ' + err.message);
+    showAlert('Failed to reopen project: ' + err.message);
   }
 }
 
@@ -4410,7 +4579,7 @@ async function switchWorkspace(path) {
     }
   } catch (err) {
     console.error('Switch workspace error:', err);
-    alert('Failed to switch workspace: ' + err.message);
+    showAlert('Failed to switch workspace: ' + err.message);
   }
 }
 
@@ -4428,7 +4597,7 @@ async function reopenWorkspace(path) {
     await switchWorkspace(path);
   } catch (err) {
     console.error('Reopen workspace error:', err);
-    alert('Failed to reopen workspace: ' + err.message);
+    showAlert('Failed to reopen workspace: ' + err.message);
   }
 }
 
@@ -4573,13 +4742,13 @@ function showFolderPickerWithCallback(callback) {
 
   // Handle new folder creation
   const handleNewFolder = async () => {
-    const name = prompt('Enter new folder name:');
+    const name = await showPrompt('Enter new folder name:', '', 'New Folder');
     if (!name || !name.trim()) return;
 
     // Validate name
     const trimmedName = name.trim();
     if (!/^[a-zA-Z0-9_.-]+$/.test(trimmedName)) {
-      alert('Folder name can only contain letters, numbers, dots, hyphens, and underscores');
+      showAlert('Folder name can only contain letters, numbers, dots, hyphens, and underscores');
       return;
     }
 
@@ -4601,7 +4770,7 @@ function showFolderPickerWithCallback(callback) {
       await loadFolder(currentPath);
     } catch (err) {
       console.error('Create folder error:', err);
-      alert('Failed to create folder: ' + err.message);
+      showAlert('Failed to create folder: ' + err.message);
     }
   };
 
@@ -4725,7 +4894,7 @@ function showCloseProjectDialog(project) {
       cleanup();
     } catch (err) {
       console.error('Remove project error:', err);
-      alert('Failed to close project: ' + err.message);
+      showAlert('Failed to close project: ' + err.message);
       dialog.style.display = 'none';
       cleanup();
     }
@@ -4916,7 +5085,7 @@ function renderChatsList(sessions, currentKey) {
 }
 
 async function deleteChat(key) {
-  if (!confirm(`Delete chat "${key}" permanently?`)) return;
+  if (!await showConfirm(`Delete chat "${key}" permanently?`, 'Delete Chat')) return;
 
   try {
     const res = await fetchWithWorkspace('/api/state', {
@@ -4934,7 +5103,7 @@ async function deleteChat(key) {
     loadChatsDialogData();
   } catch (err) {
     console.error('Delete chat error:', err);
-    alert('Failed to delete chat: ' + err.message);
+    showAlert('Failed to delete chat: ' + err.message);
   }
 }
 
@@ -5116,7 +5285,7 @@ async function showProjectSettingsDialog() {
 
   // Check if we have a project selected
   if (!workspaceState.currentWorkspace) {
-    alert('Please select a project first');
+    showAlert('Please select a project first');
     return;
   }
 
@@ -5146,11 +5315,11 @@ async function showProjectSettingsDialog() {
         closeDialog();
       } else {
         const errorText = await res.text();
-        alert('Failed to save: ' + errorText);
+        showAlert('Failed to save: ' + errorText);
       }
     } catch (err) {
       console.error('Failed to save project instructions:', err);
-      alert('Failed to save project instructions');
+      showAlert('Failed to save project instructions');
     }
   };
 
@@ -5298,7 +5467,7 @@ function renderSessionsList(sessions, currentKey) {
 }
 
 async function createNewSession() {
-  const key = prompt('Enter new session name:');
+  const key = await showPrompt('Enter new session name:', '', 'New Chat');
   if (!key || !key.trim()) return;
 
   try {
@@ -5319,7 +5488,7 @@ async function createNewSession() {
     loadSessionsDialogData();
   } catch (err) {
     console.error('Create session error:', err);
-    alert('Failed to create session: ' + err.message);
+    showAlert('Failed to create session: ' + err.message);
   }
 }
 
@@ -5340,12 +5509,12 @@ async function switchSession(key) {
     window.location.href = '/';
   } catch (err) {
     console.error('Switch session error:', err);
-    alert('Failed to switch session: ' + err.message);
+    showAlert('Failed to switch session: ' + err.message);
   }
 }
 
 async function clearCurrentSession() {
-  if (!confirm('Clear all messages in current session?')) return;
+  if (!await showConfirm('Clear all messages in current session?', 'Clear Session')) return;
 
   try {
     const res = await fetchWithWorkspace('/api/state', {
@@ -5365,12 +5534,12 @@ async function clearCurrentSession() {
     loadSessionsDialogData();
   } catch (err) {
     console.error('Clear session error:', err);
-    alert('Failed to clear session: ' + err.message);
+    showAlert('Failed to clear session: ' + err.message);
   }
 }
 
 async function deleteSession(key) {
-  if (!confirm(`Delete session "${key}"? This cannot be undone.`)) return;
+  if (!await showConfirm(`Delete session "${key}"? This cannot be undone.`, 'Delete Session')) return;
 
   try {
     const res = await fetchWithWorkspace('/api/state', {
@@ -5390,7 +5559,7 @@ async function deleteSession(key) {
     loadSessionsDialogData();
   } catch (err) {
     console.error('Delete session error:', err);
-    alert('Failed to delete session: ' + err.message);
+    showAlert('Failed to delete session: ' + err.message);
   }
 }
 
@@ -6108,7 +6277,7 @@ async function handleNewFile() {
     basePath = isDir ? itemPath : itemPath.substring(0, itemPath.lastIndexOf('/'));
   }
 
-  const fileName = prompt('Enter file name:', 'newfile.txt');
+  const fileName = await showPrompt('Enter file name:', 'newfile.txt', 'New File');
   if (!fileName || !fileName.trim()) return;
 
   const filePath = basePath ? `${basePath}/${fileName.trim()}` : fileName.trim();
@@ -6152,7 +6321,7 @@ async function handleNewFolder() {
     basePath = isDir ? itemPath : itemPath.substring(0, itemPath.lastIndexOf('/'));
   }
 
-  const folderName = prompt('Enter folder name:', 'newfolder');
+  const folderName = await showPrompt('Enter folder name:', 'newfolder', 'New Folder');
   if (!folderName || !folderName.trim()) return;
 
   const folderPath = basePath ? `${basePath}/${folderName.trim()}` : folderName.trim();
@@ -6256,14 +6425,14 @@ async function openFile(filePath, fileName, workspacePath) {
     const res = await fetch(`/api/files/read?workspace=${encodeURIComponent(workspacePath)}&path=${encodeURIComponent(filePath)}`);
     if (!res.ok) {
       const err = await res.json();
-      alert(err.error || 'Failed to open file');
+      showAlert(err.error || 'Failed to open file');
       return;
     }
 
     const data = await res.json();
 
     if (data.isBinary) {
-      alert('Cannot edit binary files');
+      showAlert('Cannot edit binary files');
       return;
     }
 
@@ -6295,7 +6464,7 @@ async function openFile(filePath, fileName, workspacePath) {
     saveOpenTabs();
   } catch (err) {
     console.error('Failed to open file:', err);
-    alert('Failed to open file');
+    showAlert('Failed to open file');
   }
 }
 
@@ -6488,7 +6657,7 @@ async function saveCurrentFile() {
   }
 }
 
-function closeTab(path) {
+async function closeTab(path) {
   const tabIndex = fileExplorer.openTabs.findIndex(t => t.path === path);
   if (tabIndex === -1) return;
 
@@ -6496,7 +6665,7 @@ function closeTab(path) {
 
   // Check for unsaved changes
   if (tab.dirty) {
-    if (!confirm(`"${tab.name}" has unsaved changes. Close anyway?`)) {
+    if (!await showConfirm(`"${tab.name}" has unsaved changes. Close anyway?`, 'Unsaved Changes')) {
       return;
     }
   }
@@ -6605,7 +6774,7 @@ function startFileWatching() {
         ? `"${dirtyChanges[0].tab.name}" was modified externally. Reload and lose local changes?`
         : `${dirtyChanges.length} files were modified externally (${fileNames}). Reload all and lose local changes?`;
 
-      if (confirm(msg)) {
+      if (await showConfirm(msg, 'External Changes')) {
         for (const { tab, data } of dirtyChanges) {
           tab.content = data.content;
           tab.originalContent = data.content;
@@ -7364,7 +7533,7 @@ async function handleContextMenuAction(action) {
 
     case 'rename':
       const oldName = target.path.split('/').pop();
-      const newName = prompt('Rename to:', oldName);
+      const newName = await showPrompt('Rename to:', oldName, 'Rename');
       if (newName && newName !== oldName) {
         const parentPath = target.path.substring(0, target.path.lastIndexOf('/'));
         const newPath = parentPath ? `${parentPath}/${newName}` : newName;
@@ -7394,7 +7563,7 @@ async function handleContextMenuAction(action) {
     case 'delete':
       const itemType = target.isDir ? 'folder' : 'file';
       const itemName = target.path.split('/').pop();
-      if (confirm(`Delete ${itemType} "${itemName}"?`)) {
+      if (await showConfirm(`Delete ${itemType} "${itemName}"?`, 'Delete')) {
         try {
           const resp = await fetch('/api/files/delete', {
             method: 'POST',
