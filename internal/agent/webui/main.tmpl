@@ -162,7 +162,7 @@
             <p>No preview available</p>
             <span>Ask the agent to create visual content like HTML pages, images, or diagrams</span>
           </div>
-          <iframe id="previewFrame" class="preview-frame hidden" sandbox="allow-scripts allow-same-origin"></iframe>
+          <iframe id="previewFrame" class="preview-frame hidden" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads"></iframe>
         </div>
       </aside>
     </div>
@@ -522,6 +522,57 @@
       }
     });
   </script>
+
+  <!-- Custom Alert Dialog -->
+  <div id="alertDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content alert-dialog">
+      <div class="dialog-header">
+        <h2 id="alertDialogTitle">Alert</h2>
+        <button id="closeAlertDialog" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <p id="alertDialogMessage"></p>
+      </div>
+      <div class="form-actions">
+        <button id="alertDialogOk" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Prompt Dialog -->
+  <div id="promptDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content prompt-dialog">
+      <div class="dialog-header">
+        <h2 id="promptDialogTitle">Input</h2>
+        <button id="closePromptDialog" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <p id="promptDialogMessage"></p>
+        <input type="text" id="promptDialogInput" class="prompt-input" autocomplete="off">
+      </div>
+      <div class="form-actions">
+        <button id="promptDialogCancel" class="ghost">Cancel</button>
+        <button id="promptDialogOk" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Confirm Dialog -->
+  <div id="confirmDialog" class="dialog-overlay" style="display: none;">
+    <div class="dialog-content confirm-dialog">
+      <div class="dialog-header">
+        <h2 id="confirmDialogTitle">Confirm</h2>
+        <button id="closeConfirmDialog" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <p id="confirmDialogMessage"></p>
+      </div>
+      <div class="form-actions">
+        <button id="confirmDialogCancel" class="ghost">Cancel</button>
+        <button id="confirmDialogOk" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
 
   <!-- File Explorer Context Menu -->
   <div id="explorerContextMenu" class="context-menu" style="display: none;">

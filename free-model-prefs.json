@@ -1,0 +1,13 @@
+{
+  "text": [
+    "deepseek/deepseek-chat-v3-0324:free",
+    "qwen/qwen3-coder:free",
+    "z-ai/glm-4.5-air:free",
+    "x-ai/grok-4.1-fast:free"
+  ],
+  "vision": [
+    "qwen/qwen2.5-vl-32b-instruct:free",
+    "x-ai/grok-4.1-fast:free",
+    "nvidia/nemotron-nano-12b-v2-vl:free"
+  ]
+}

@@ -55,11 +55,11 @@ var bellSound []byte
 
 var templates *template.Template
 
-// OpenRouter models cache for daily refresh
+// OpenRouter models cache
 const (
 	openrouterModelsURL     = "https://openrouter.ai/api/frontend/models/find?order=top-weekly"
-	openrouterCacheDuration = 24 * time.Hour
-	openrouterFetchTimeout  = 30 * time.Second
+	openrouterCacheDuration = 15 * time.Minute
+	openrouterFetchTimeout  = 10 * time.Second
 )
 
 type openrouterModelCache struct {
@@ -337,51 +337,43 @@ func (s *webServer) handleOpenRouterModels(w http.ResponseWriter, r *http.Reques
 	_, _ = w.Write(data)
 }
 
-// getOpenRouterModels returns cached models, fetches fresh if stale, falls back to embedded
+// getOpenRouterModels returns cached models if fresh, otherwise fetches new.
+// Fallback chain: fresh cache -> fetch API -> stale cache -> embedded JSON
 func (s *webServer) getOpenRouterModels() []byte {
+	// Check if cache is fresh (< 15 mins old)
 	orModelCache.mu.RLock()
-	if time.Since(orModelCache.fetchedAt) < openrouterCacheDuration && len(orModelCache.data) > 0 {
-		defer orModelCache.mu.RUnlock()
-		return orModelCache.data
-	}
+	cacheData := orModelCache.data
+	cacheFresh := time.Since(orModelCache.fetchedAt) < openrouterCacheDuration && len(cacheData) > 0
 	orModelCache.mu.RUnlock()
 
-	// Try to fetch fresh data in background if cache exists but stale
-	if len(orModelCache.data) > 0 {
-		go s.refreshOpenRouterModels()
-		orModelCache.mu.RLock()
-		defer orModelCache.mu.RUnlock()
-		return orModelCache.data
+	if cacheFresh {
+		logging.DevLog("openrouter models: returning fresh cache (%d bytes)", len(cacheData))
+		return cacheData
 	}
 
-	// No cache - fetch synchronously
+	// Cache stale or empty - fetch fresh from OpenRouter API
+	logging.DevLog("openrouter models: fetching from API...")
 	data, err := fetchOpenRouterModels()
 	if err != nil {
-		logging.DevLog("openrouter models fetch failed: %v, using embedded fallback", err)
+		logging.DevLog("openrouter models: fetch failed: %v", err)
+		// Return stale cache if available
+		if len(cacheData) > 0 {
+			logging.DevLog("openrouter models: returning stale cache (%d bytes)", len(cacheData))
+			return cacheData
+		}
+		// No cache at all - return embedded fallback
+		logging.DevLog("openrouter models: returning embedded fallback (%d bytes)", len(openrouterModels))
 		return openrouterModels
 	}
 
+	// Update cache with fresh data
 	orModelCache.mu.Lock()
 	orModelCache.data = data
 	orModelCache.fetchedAt = time.Now()
 	orModelCache.mu.Unlock()
 
-	logging.DevLog("openrouter models fetched: %d bytes", len(data))
+	logging.DevLog("openrouter models: returning fresh fetch (%d bytes)", len(data))
 	return data
-}
-
-func (s *webServer) refreshOpenRouterModels() {
-	data, err := fetchOpenRouterModels()
-	if err != nil {
-		logging.DevLog("openrouter models background refresh failed: %v", err)
-		return
-	}
-
-	orModelCache.mu.Lock()
-	orModelCache.data = data
-	orModelCache.fetchedAt = time.Now()
-	orModelCache.mu.Unlock()
-	logging.DevLog("openrouter models refreshed: %d bytes", len(data))
 }
 
 // fetchOpenRouterModels fetches and transforms models from OpenRouter API
