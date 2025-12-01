@@ -1467,49 +1467,66 @@ button.danger:hover {
   height: 14px;
 }
 
-/* Plan Mode Toggle */
-.plan-mode-toggle {
+/* Toolbar Toggle Buttons (right side) */
+.toolbar-toggles {
   display: flex;
   align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
 }
 
-.plan-mode-btn {
+/* Pane Toggle Buttons (right side of toolbar) */
+.pane-toggles {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.6rem;
+  gap: 0.25rem;
+}
+
+.pane-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 0.75rem;
   transition: all 0.15s ease;
 }
 
-.plan-mode-btn:hover {
+.pane-toggle-btn:hover {
   background: var(--bg-panel-alt);
   color: var(--text);
-  border-color: var(--border-hover);
+  border-color: var(--border);
 }
 
-.plan-mode-btn.active {
-  background: var(--warning-soft, rgba(234, 179, 8, 0.15));
+.pane-toggle-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pane-toggle-btn.active:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* Plan mode button uses warning color when active */
+#planModeBtn.active {
+  background: rgba(234, 179, 8, 0.15);
   border-color: var(--warning, #eab308);
   color: var(--warning, #eab308);
 }
 
-.plan-mode-btn.active:hover {
-  background: var(--warning-soft, rgba(234, 179, 8, 0.25));
+#planModeBtn.active:hover {
+  background: rgba(234, 179, 8, 0.25);
 }
 
-.plan-mode-icon {
-  width: 14px;
-  height: 14px;
-}
-
-.plan-mode-label {
-  font-weight: 500;
+.pane-toggle-btn i {
+  width: 16px;
+  height: 16px;
 }
 
 .project-dropdown-menu {
@@ -4433,4 +4450,224 @@ button.danger:hover {
 
 .update-error {
   color: var(--error, #ef4444);
+}
+
+/* ============================================
+   Preview Panel
+   ============================================ */
+
+.preview-panel {
+  width: 400px;
+  min-width: 200px;
+  max-width: 70%;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease;
+}
+
+.preview-panel.hidden {
+  display: none;
+}
+
+.preview-resize-handle {
+  width: 4px;
+  background: transparent;
+  cursor: col-resize;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.preview-resize-handle:hover,
+.preview-resize-handle.dragging {
+  background: var(--accent);
+}
+
+.preview-resize-handle.hidden {
+  display: none;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel-alt);
+  flex-shrink: 0;
+}
+
+.preview-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 0.5rem;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.preview-actions .icon-btn-sm {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+}
+
+.preview-actions .icon-btn-sm:hover {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.preview-actions .icon-btn-sm i {
+  width: 14px;
+  height: 14px;
+}
+
+/* Preview toggle button active state (when preview is enabled) */
+.preview-actions .icon-btn-sm.active {
+  color: var(--accent);
+}
+
+.preview-content {
+  flex: 1;
+  display: flex;
+  overflow: auto;
+  background: #fff;
+}
+
+.preview-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
+.preview-frame.hidden {
+  display: none;
+}
+
+/* Preview empty state */
+.preview-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 2rem;
+  background: var(--bg-panel);
+}
+
+.preview-empty.hidden {
+  display: none;
+}
+
+.preview-empty i {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.preview-empty p {
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0 0 0.5rem 0;
+  color: var(--text);
+}
+
+.preview-empty span {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+/* Preview Fullscreen Mode (browser native) */
+.preview-panel:fullscreen {
+  width: 100%;
+  max-width: 100%;
+  background: var(--bg);
+}
+
+.preview-panel:fullscreen .preview-header {
+  background: var(--bg);
+}
+
+.preview-panel:fullscreen .preview-content {
+  background: var(--bg);
+}
+
+.preview-panel:fullscreen .preview-frame {
+  background: #fff;
+}
+
+/* File Explorer Context Menu */
+.context-menu {
+  position: fixed;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-panel-alt);
+}
+
+.context-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.context-menu-item:disabled:hover {
+  background: none;
+}
+
+.context-menu-item i {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+
+.context-menu-item.danger {
+  color: var(--error);
+}
+
+.context-menu-item.danger i {
+  color: var(--error);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
 }

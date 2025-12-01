@@ -53,6 +53,22 @@ const ui = {
   planModeBtn: null,
   requestTimeoutInput: null,
   requestTimeoutValue: null,
+  // Preview panel elements
+  previewPanel: null,
+  previewResizeHandle: null,
+  previewTitle: null,
+  previewFrame: null,
+  previewEmpty: null,
+  previewOpenNewTab: null,
+  previewFullscreenBtn: null,
+  previewCloseBtn: null,
+  previewEnabledToggle: null,  // Settings checkbox for preview enabled
+  explorerContextMenu: null,   // File explorer right-click menu
+  // Pane toggle buttons (toolbar)
+  toggleChatBtn: null,
+  toggleEditorBtn: null,
+  togglePreviewBtn: null,
+  bellToggleBtn: null,
 };
 
 const appState = {
@@ -60,6 +76,13 @@ const appState = {
   busy: false,
   showAllMessages: false,
   currentAbortController: null,
+  previewEnabled: true,  // Preview pane feature toggle (user preference)
+  previewPath: null,     // Currently previewed file path
+  previewTitle: null,    // Currently previewed file title
+  bellEnabled: true,     // Bell sound on task completion
+  bellAudio: null,       // Audio element for bell sound
+  bellArmed: false,      // Only play bell after LLM work starts (not on page load)
+  contextMenuTarget: null, // Current right-clicked file/folder for context menu
 };
 
 async function initUI() {
@@ -115,6 +138,28 @@ async function initUI() {
   ui.planModeBtn = document.getElementById('planModeBtn');
   ui.requestTimeoutInput = document.getElementById('requestTimeoutInput');
   ui.requestTimeoutValue = document.getElementById('requestTimeoutValue');
+  // Preview panel
+  ui.previewPanel = document.getElementById('previewPanel');
+  ui.previewResizeHandle = document.getElementById('previewResizeHandle');
+  ui.previewTitle = document.getElementById('previewTitle');
+  ui.previewFrame = document.getElementById('previewFrame');
+  ui.previewEmpty = document.getElementById('previewEmpty');
+  ui.previewOpenNewTab = document.getElementById('previewOpenNewTab');
+  ui.previewFullscreenBtn = document.getElementById('previewFullscreenBtn');
+  ui.previewCloseBtn = document.getElementById('previewCloseBtn');
+  ui.previewEnabledToggle = document.getElementById('previewEnabledToggle');
+  ui.explorerContextMenu = document.getElementById('explorerContextMenu');
+  // Pane toggle buttons
+  ui.toggleChatBtn = document.getElementById('toggleChatBtn');
+  ui.toggleEditorBtn = document.getElementById('toggleEditorBtn');
+  ui.togglePreviewBtn = document.getElementById('togglePreviewBtn');
+  ui.bellToggleBtn = document.getElementById('bellToggleBtn');
+
+  // Initialize bell audio and state
+  initBell();
+
+  // Initialize file explorer context menu
+  initExplorerContextMenu();
 
   ui.promptForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -296,6 +341,7 @@ async function initUI() {
   initProjects();
   initUpdateChecker();
   initFileExplorer();
+  initPreviewPanel();
   sendTelemetry();
   updateStatusBar();
 
@@ -1214,6 +1260,9 @@ async function submitPrompt() {
   ui.promptInput.value = '';
   ui.promptInput.style.height = 'auto';
 
+  // Arm the bell to play when we return to Ready state
+  appState.bellArmed = true;
+
   try {
     const res = await fetchWithWorkspace('/api/stream', {
       method: 'POST',
@@ -1418,6 +1467,12 @@ function handleStreamEvent(event) {
         renderPlan();
       } catch (err) {
         console.error('Failed to parse plan update:', err);
+      }
+      break;
+    case 'preview':
+      console.log('Preview event:', event.data);
+      if (appState.previewEnabled && event.data.path) {
+        showPreview(event.data.path, event.data.title || 'Preview');
       }
       break;
     case 'context_update':
@@ -2074,6 +2129,61 @@ function setBusy(flag, message) {
 function setStatus(message) {
   if (ui.statusText) {
     ui.statusText.textContent = message || '';
+  }
+  // Play bell when transitioning to Ready state after LLM work (not on initial load)
+  if (message === 'Ready.' && appState.bellEnabled && appState.bellArmed) {
+    playBell();
+    appState.bellArmed = false;
+  }
+}
+
+// Initialize bell sound feature
+function initBell() {
+  // Load bell enabled state from localStorage
+  const savedBellState = localStorage.getItem('bellEnabled');
+  if (savedBellState !== null) {
+    appState.bellEnabled = savedBellState === 'true';
+  }
+
+  // Create audio element
+  appState.bellAudio = new Audio('/bell.wav');
+  appState.bellAudio.preload = 'auto';
+
+  // Update button state
+  updateBellToggleState();
+
+  // Add click listener
+  if (ui.bellToggleBtn) {
+    ui.bellToggleBtn.addEventListener('click', toggleBell);
+  }
+}
+
+// Toggle bell enabled/disabled
+function toggleBell() {
+  appState.bellEnabled = !appState.bellEnabled;
+  localStorage.setItem('bellEnabled', appState.bellEnabled.toString());
+  updateBellToggleState();
+}
+
+// Update bell toggle button visual state
+function updateBellToggleState() {
+  if (ui.bellToggleBtn) {
+    ui.bellToggleBtn.classList.toggle('active', appState.bellEnabled);
+    ui.bellToggleBtn.title = appState.bellEnabled
+      ? 'Bell enabled (plays sound when task completes)'
+      : 'Bell disabled';
+  }
+}
+
+// Play the bell sound
+function playBell() {
+  if (appState.bellAudio) {
+    // Reset to start in case it's already playing
+    appState.bellAudio.currentTime = 0;
+    appState.bellAudio.play().catch(err => {
+      // Ignore autoplay errors (browser may block if no user interaction)
+      console.debug('Bell playback blocked:', err.message);
+    });
   }
 }
 
@@ -3947,6 +4057,11 @@ function renderChatMenu() {
 
 async function switchChat(key) {
   try {
+    // Collapse preview panel before switching (keep button visible)
+    if (typeof collapsePreviewPanel === 'function') {
+      collapsePreviewPanel();
+    }
+
     const res = await fetchWithWorkspace('/api/state', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3954,6 +4069,10 @@ async function switchChat(key) {
     });
     if (res.ok) {
       await refreshSession();
+      // Restore preview for new chat
+      if (typeof restorePreview === 'function') {
+        restorePreview();
+      }
     }
   } catch (err) {
     console.error('Switch chat failed:', err);
@@ -4281,6 +4400,11 @@ async function switchWorkspace(path) {
       closeAllTabs();
     }
 
+    // Clear preview panel when switching workspaces
+    if (typeof clearPreview === 'function') {
+      clearPreview();
+    }
+
     // Update localStorage with new workspace
     setCurrentWorkspacePath(path);
 
@@ -4293,6 +4417,14 @@ async function switchWorkspace(path) {
 
     // Refresh session with new workspace context
     await refreshSession();
+
+    // Fetch preview enabled state for new workspace and restore preview
+    if (typeof fetchPreviewState === 'function') {
+      fetchPreviewState();
+    }
+    if (typeof restorePreview === 'function') {
+      restorePreview();
+    }
   } catch (err) {
     console.error('Switch workspace error:', err);
     alert('Failed to switch workspace: ' + err.message);
@@ -5854,6 +5986,11 @@ function renderFileTreeItem(entry, container, workspacePath, depth) {
   item.dataset.depth = depth;
   item.dataset.isDir = entry.isDir;
 
+  // Right-click context menu
+  item.addEventListener('contextmenu', (e) => {
+    showExplorerContextMenu(e, entry.path, entry.isDir);
+  });
+
   if (entry.isDir) {
     item.innerHTML = `
       <i data-lucide="chevron-right" class="expand-icon"></i>
@@ -6008,9 +6145,8 @@ async function handleNewFile() {
 
     // Refresh tree and open the new file
     await refreshFileTree();
-    // openFile expects (filePath, fileName, workspacePath)
-    const fullPath = workspacePath + '/' + filePath;
-    openFile(fullPath, fileName.trim(), workspacePath);
+    // openFile expects (relativePath, fileName, workspacePath)
+    await openFile(filePath, fileName.trim(), workspacePath);
     showToast(`Created ${fileName}`, 'success');
   } catch (err) {
     showToast('Failed to create file', 'error');
@@ -6395,6 +6531,11 @@ function closeTab(path) {
         fileExplorer.editorContainer.innerHTML = '';
       }
     }
+    // Clear explorer selection
+    const selected = fileExplorer.fileTree?.querySelector('.file-tree-item.selected');
+    if (selected) {
+      selected.classList.remove('selected');
+    }
   } else {
     // Switch to previous or next tab
     const newIndex = Math.min(tabIndex, fileExplorer.openTabs.length - 1);
@@ -6620,6 +6761,7 @@ function showEditorPane() {
   if (fileExplorer.expandEditorBtn) {
     fileExplorer.expandEditorBtn.classList.add('hidden');
   }
+  updatePaneToggleStates();
 }
 
 // Hide editor pane (when all files closed)
@@ -6633,6 +6775,7 @@ function hideEditorPane() {
   if (fileExplorer.editorTabsSection) {
     fileExplorer.editorTabsSection.classList.add('hidden');
   }
+  updatePaneToggleStates();
 }
 
 // Collapse editor pane (user action - keeps tabs in toolbar)
@@ -6646,6 +6789,7 @@ function collapseEditorPane() {
   if (fileExplorer.expandEditorBtn) {
     fileExplorer.expandEditorBtn.classList.remove('hidden');
   }
+  updatePaneToggleStates();
 }
 
 // Expand editor pane (user action)
@@ -6663,6 +6807,7 @@ function expandEditorPane() {
   if (fileExplorer.editor) {
     setTimeout(() => fileExplorer.editor.refresh(), 0);
   }
+  updatePaneToggleStates();
 }
 
 // Collapse chat pane (user action)
@@ -6680,6 +6825,7 @@ function collapseChatPane() {
   if (fileExplorer.editorPane) {
     fileExplorer.editorPane.style.width = '';
   }
+  updatePaneToggleStates();
 }
 
 // Expand chat pane (user action)
@@ -6695,6 +6841,61 @@ function expandChatPane() {
   }
   if (fileExplorer.expandChatBtn) {
     fileExplorer.expandChatBtn.classList.add('hidden');
+  }
+  updatePaneToggleStates();
+}
+
+// Toggle chat pane visibility
+function toggleChatPane() {
+  if (!fileExplorer.chatPane) return;
+  if (fileExplorer.chatPane.classList.contains('collapsed')) {
+    expandChatPane();
+  } else {
+    collapseChatPane();
+  }
+  updatePaneToggleStates();
+}
+
+// Toggle editor pane visibility
+function toggleEditorPane() {
+  if (!fileExplorer.editorPane) return;
+  // If editor is hidden (no files open), do nothing
+  if (fileExplorer.editorPane.classList.contains('hidden')) return;
+
+  if (fileExplorer.editorPane.classList.contains('collapsed')) {
+    expandEditorPane();
+  } else {
+    collapseEditorPane();
+  }
+  updatePaneToggleStates();
+}
+
+// Update toolbar pane toggle button states based on actual pane visibility
+function updatePaneToggleStates() {
+  // Chat toggle
+  if (ui.toggleChatBtn && fileExplorer.chatPane) {
+    const chatVisible = !fileExplorer.chatPane.classList.contains('collapsed');
+    ui.toggleChatBtn.classList.toggle('active', chatVisible);
+    ui.toggleChatBtn.title = chatVisible ? 'Hide Chat' : 'Show Chat';
+  }
+
+  // Editor toggle
+  if (ui.toggleEditorBtn && fileExplorer.editorPane) {
+    const editorHidden = fileExplorer.editorPane.classList.contains('hidden');
+    const editorCollapsed = fileExplorer.editorPane.classList.contains('collapsed');
+    const editorVisible = !editorHidden && !editorCollapsed;
+    ui.toggleEditorBtn.classList.toggle('active', editorVisible);
+    // Disable button if no files open
+    ui.toggleEditorBtn.disabled = editorHidden;
+    ui.toggleEditorBtn.style.opacity = editorHidden ? '0.4' : '1';
+    ui.toggleEditorBtn.title = editorHidden ? 'No files open' : (editorVisible ? 'Hide Editor' : 'Show Editor');
+  }
+
+  // Preview toggle
+  if (ui.togglePreviewBtn && ui.previewPanel) {
+    const previewVisible = !ui.previewPanel.classList.contains('hidden');
+    ui.togglePreviewBtn.classList.toggle('active', previewVisible);
+    ui.togglePreviewBtn.title = previewVisible ? 'Hide Preview' : 'Show Preview';
   }
 }
 
@@ -6747,3 +6948,517 @@ function switchToChatView() {
 
 // Hook into project switching to reload file tree
 const originalSwitchWorkspace = typeof switchWorkspace === 'function' ? switchWorkspace : null;
+
+// ============================================
+// Preview Panel Functions
+// ============================================
+
+// Get localStorage key for preview state (per workspace + chat)
+function getPreviewStorageKey() {
+  const workspacePath = appState.data?.workspace?.path || '';
+  const chatName = appState.data?.current_session || 'default';
+  return `cando_preview_${workspacePath}_${chatName}`;
+}
+
+// Save preview state to localStorage
+function savePreviewState() {
+  if (!appState.previewPath) return;
+  const key = getPreviewStorageKey();
+  localStorage.setItem(key, JSON.stringify({
+    path: appState.previewPath,
+    title: appState.previewTitle || appState.previewPath,
+  }));
+}
+
+// Load preview state from localStorage
+function loadPreviewState() {
+  const key = getPreviewStorageKey();
+  const saved = localStorage.getItem(key);
+  if (!saved) return null;
+  try {
+    return JSON.parse(saved);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Show preview panel with a file (called when agent uses preview_file tool)
+function showPreview(path, title) {
+  if (!ui.previewPanel || !ui.previewFrame) return;
+
+  appState.previewPath = path;
+  appState.previewTitle = title || path;
+
+  // Set title
+  if (ui.previewTitle) {
+    ui.previewTitle.textContent = appState.previewTitle;
+  }
+
+  // Load file in iframe via path-based API (allows relative URLs to work)
+  const workspacePath = appState.data?.workspace?.path || '';
+  const workspaceEncoded = btoa(workspacePath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const previewUrl = `/api/preview/${workspaceEncoded}/${path}`;
+  ui.previewFrame.src = previewUrl;
+
+  // Show iframe, hide empty state
+  ui.previewFrame.classList.remove('hidden');
+  if (ui.previewEmpty) {
+    ui.previewEmpty.classList.add('hidden');
+  }
+
+  // Show panel and resize handle
+  ui.previewPanel.classList.remove('hidden');
+  if (ui.previewResizeHandle) {
+    ui.previewResizeHandle.classList.remove('hidden');
+  }
+
+  // Set initial width to half of content area if not already set
+  if (!ui.previewPanel.style.width) {
+    const contentArea = document.querySelector('.content-area');
+    if (contentArea) {
+      ui.previewPanel.style.width = Math.floor(contentArea.offsetWidth / 2) + 'px';
+    }
+  }
+
+  // Save to localStorage for persistence
+  savePreviewState();
+  updatePreviewToggleState();
+}
+
+// Toggle preview panel visibility
+function togglePreviewPanel() {
+  if (!ui.previewPanel) return;
+
+  if (ui.previewPanel.classList.contains('hidden')) {
+    expandPreviewPanel();
+  } else {
+    collapsePreviewPanel();
+  }
+}
+
+// Collapse preview panel (keeps content, can be re-expanded)
+function collapsePreviewPanel() {
+  if (!ui.previewPanel) return;
+
+  ui.previewPanel.classList.add('hidden');
+  if (ui.previewResizeHandle) {
+    ui.previewResizeHandle.classList.add('hidden');
+  }
+  updatePaneToggleStates();
+}
+
+// Expand preview panel (show previous content or empty state)
+function expandPreviewPanel() {
+  if (!ui.previewPanel) return;
+
+  // Show panel and resize handle
+  ui.previewPanel.classList.remove('hidden');
+  if (ui.previewResizeHandle) {
+    ui.previewResizeHandle.classList.remove('hidden');
+  }
+
+  // Set initial width if not set
+  if (!ui.previewPanel.style.width) {
+    const contentArea = document.querySelector('.content-area');
+    if (contentArea) {
+      ui.previewPanel.style.width = Math.floor(contentArea.offsetWidth / 2) + 'px';
+    }
+  }
+
+  // If we have content, show iframe; otherwise show empty state
+  if (appState.previewPath) {
+    ui.previewFrame.classList.remove('hidden');
+    if (ui.previewEmpty) {
+      ui.previewEmpty.classList.add('hidden');
+    }
+  } else {
+    ui.previewFrame.classList.add('hidden');
+    if (ui.previewEmpty) {
+      ui.previewEmpty.classList.remove('hidden');
+    }
+  }
+  updatePaneToggleStates();
+}
+
+// Restore preview from localStorage (called on page load / chat switch)
+function restorePreview() {
+  const saved = loadPreviewState();
+  if (saved && saved.path) {
+    appState.previewPath = saved.path;
+    appState.previewTitle = saved.title || saved.path;
+
+    if (ui.previewTitle) {
+      ui.previewTitle.textContent = appState.previewTitle;
+    }
+
+    // Load in iframe via path-based API
+    const workspacePath = appState.data?.workspace?.path || '';
+    const workspaceEncoded = btoa(workspacePath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const previewUrl = `/api/preview/${workspaceEncoded}/${saved.path}`;
+    if (ui.previewFrame) {
+      ui.previewFrame.src = previewUrl;
+    }
+  }
+}
+
+// Clear preview completely (used when switching workspaces)
+function clearPreview() {
+  if (!ui.previewPanel) return;
+
+  ui.previewPanel.classList.add('hidden');
+  if (ui.previewResizeHandle) {
+    ui.previewResizeHandle.classList.add('hidden');
+  }
+
+  appState.previewPath = null;
+  appState.previewTitle = null;
+  if (ui.previewFrame) {
+    ui.previewFrame.src = 'about:blank';
+    ui.previewFrame.classList.add('hidden');
+  }
+  if (ui.previewEmpty) {
+    ui.previewEmpty.classList.remove('hidden');
+  }
+  if (ui.previewTitle) {
+    ui.previewTitle.textContent = 'Preview';
+  }
+}
+
+// Legacy alias for backward compatibility
+function hidePreview() {
+  collapsePreviewPanel();
+}
+
+// Toggle preview enabled state (user preference - affects agent behavior)
+async function togglePreviewEnabled() {
+  // Read from checkbox if available, otherwise toggle
+  if (ui.previewEnabledToggle) {
+    appState.previewEnabled = ui.previewEnabledToggle.checked;
+  } else {
+    appState.previewEnabled = !appState.previewEnabled;
+  }
+
+  // Persist to backend
+  try {
+    const workspacePath = appState.data?.workspace?.path || '';
+    await fetch(`/api/preview-enabled?workspace=${encodeURIComponent(workspacePath)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: appState.previewEnabled }),
+    });
+  } catch (err) {
+    console.error('Failed to toggle preview state:', err);
+  }
+
+  // If disabling and panel is open, collapse it
+  if (!appState.previewEnabled && ui.previewPanel && !ui.previewPanel.classList.contains('hidden')) {
+    collapsePreviewPanel();
+  }
+}
+
+// Update preview enabled checkbox state
+function updatePreviewToggleState() {
+  // Update settings checkbox
+  if (ui.previewEnabledToggle) {
+    ui.previewEnabledToggle.checked = appState.previewEnabled;
+  }
+}
+
+// Open current preview in new browser tab
+function openPreviewInNewTab() {
+  if (!appState.previewPath) return;
+
+  const workspacePath = appState.data?.workspace?.path || '';
+  const workspaceEncoded = btoa(workspacePath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const previewUrl = `/api/preview/${workspaceEncoded}/${appState.previewPath}`;
+  window.open(previewUrl, '_blank');
+}
+
+// Toggle fullscreen mode for preview panel (browser native fullscreen)
+function togglePreviewFullscreen() {
+  if (!ui.previewPanel) return;
+
+  if (document.fullscreenElement) {
+    // Exit fullscreen
+    document.exitFullscreen();
+  } else {
+    // Enter fullscreen
+    ui.previewPanel.requestFullscreen().catch(err => {
+      console.error('Failed to enter fullscreen:', err);
+    });
+  }
+}
+
+// Update fullscreen button icon when fullscreen state changes
+document.addEventListener('fullscreenchange', () => {
+  if (!ui.previewFullscreenBtn) return;
+
+  const icon = ui.previewFullscreenBtn.querySelector('i');
+  if (icon) {
+    icon.setAttribute('data-lucide', document.fullscreenElement ? 'minimize' : 'maximize');
+    if (window.lucide) {
+      lucide.createIcons({ nodes: [ui.previewFullscreenBtn] });
+    }
+  }
+});
+
+// Initialize preview panel resize handling
+function initPreviewResize() {
+  const handle = ui.previewResizeHandle;
+  const panel = ui.previewPanel;
+  if (!handle || !panel) return;
+
+  let isResizing = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  handle.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    startX = e.clientX;
+    startWidth = panel.offsetWidth;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+
+    // For right-side panel, dragging left increases width
+    const delta = startX - e.clientX;
+    const newWidth = Math.max(200, Math.min(startWidth + delta, window.innerWidth * 0.7));
+    panel.style.width = newWidth + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isResizing) {
+      isResizing = false;
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
+}
+
+// Initialize preview panel event handlers
+function initPreviewPanel() {
+  // Close button (collapses panel)
+  if (ui.previewCloseBtn) {
+    ui.previewCloseBtn.addEventListener('click', collapsePreviewPanel);
+  }
+
+  // Settings checkbox for preview enabled
+  if (ui.previewEnabledToggle) {
+    ui.previewEnabledToggle.addEventListener('change', togglePreviewEnabled);
+  }
+
+  // Open in new tab
+  if (ui.previewOpenNewTab) {
+    ui.previewOpenNewTab.addEventListener('click', openPreviewInNewTab);
+  }
+
+  // Fullscreen toggle
+  if (ui.previewFullscreenBtn) {
+    ui.previewFullscreenBtn.addEventListener('click', togglePreviewFullscreen);
+  }
+
+  // Pane toggle buttons in toolbar
+  if (ui.toggleChatBtn) {
+    ui.toggleChatBtn.addEventListener('click', toggleChatPane);
+  }
+  if (ui.toggleEditorBtn) {
+    ui.toggleEditorBtn.addEventListener('click', toggleEditorPane);
+  }
+  if (ui.togglePreviewBtn) {
+    ui.togglePreviewBtn.addEventListener('click', togglePreviewPanel);
+  }
+
+  // Initialize resize
+  initPreviewResize();
+
+  // Fetch initial preview enabled state from backend
+  fetchPreviewState();
+
+  // Restore preview from localStorage after a short delay (wait for session data)
+  setTimeout(() => {
+    restorePreview();
+  }, 500);
+
+  // Initial state sync for pane toggles
+  updatePaneToggleStates();
+}
+
+// Fetch preview enabled state from backend
+async function fetchPreviewState() {
+  try {
+    const workspacePath = appState.data?.workspace?.path || '';
+    if (!workspacePath) return;
+
+    const resp = await fetch(`/api/preview-enabled?workspace=${encodeURIComponent(workspacePath)}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      appState.previewEnabled = data.enabled;
+      updatePreviewToggleState();
+    }
+  } catch (err) {
+    console.error('Failed to fetch preview state:', err);
+  }
+}
+
+// ========== File Explorer Context Menu ==========
+
+const PREVIEWABLE_EXTENSIONS = [
+  '.html', '.htm',
+  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
+  '.pdf',
+  '.txt', '.md', '.json', '.xml', '.csv'
+];
+
+function canPreviewFile(filename) {
+  const ext = filename.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+  return PREVIEWABLE_EXTENSIONS.includes(ext);
+}
+
+function showExplorerContextMenu(e, path, isDir) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (!ui.explorerContextMenu) return;
+
+  appState.contextMenuTarget = { path, isDir };
+
+  // Position menu at cursor
+  const menu = ui.explorerContextMenu;
+  menu.style.left = `${e.clientX}px`;
+  menu.style.top = `${e.clientY}px`;
+  menu.style.display = 'block';
+
+  // Update preview button state
+  const previewBtn = menu.querySelector('[data-action="preview"]');
+  if (previewBtn) {
+    const canPreview = !isDir && canPreviewFile(path);
+    previewBtn.disabled = !canPreview;
+  }
+
+  // Refresh icons
+  if (window.lucide) {
+    lucide.createIcons({ nodes: [menu] });
+  }
+
+  // Adjust position if menu goes off screen
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) {
+    menu.style.left = `${e.clientX - rect.width}px`;
+  }
+  if (rect.bottom > window.innerHeight) {
+    menu.style.top = `${e.clientY - rect.height}px`;
+  }
+}
+
+function hideExplorerContextMenu() {
+  if (ui.explorerContextMenu) {
+    ui.explorerContextMenu.style.display = 'none';
+  }
+  appState.contextMenuTarget = null;
+}
+
+async function handleContextMenuAction(action) {
+  const target = appState.contextMenuTarget;
+  if (!target) return;
+
+  const workspacePath = appState.data?.workspace?.path;
+  if (!workspacePath) return;
+
+  hideExplorerContextMenu();
+
+  switch (action) {
+    case 'preview':
+      if (!target.isDir && canPreviewFile(target.path)) {
+        showPreview(target.path);
+      }
+      break;
+
+    case 'rename':
+      const oldName = target.path.split('/').pop();
+      const newName = prompt('Rename to:', oldName);
+      if (newName && newName !== oldName) {
+        const parentPath = target.path.substring(0, target.path.lastIndexOf('/'));
+        const newPath = parentPath ? `${parentPath}/${newName}` : newName;
+        try {
+          const resp = await fetch('/api/files/rename', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              workspace: workspacePath,
+              oldPath: target.path,
+              newPath: newPath
+            })
+          });
+          if (resp.ok) {
+            showToast(`Renamed to ${newName}`, 'success');
+            refreshFileTree();
+          } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to rename', 'error');
+          }
+        } catch (err) {
+          showToast('Failed to rename', 'error');
+        }
+      }
+      break;
+
+    case 'delete':
+      const itemType = target.isDir ? 'folder' : 'file';
+      const itemName = target.path.split('/').pop();
+      if (confirm(`Delete ${itemType} "${itemName}"?`)) {
+        try {
+          const resp = await fetch('/api/files/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              workspace: workspacePath,
+              path: target.path
+            })
+          });
+          if (resp.ok) {
+            showToast(`Deleted ${itemName}`, 'success');
+            refreshFileTree();
+          } else {
+            const err = await resp.json();
+            showToast(err.error || 'Failed to delete', 'error');
+          }
+        } catch (err) {
+          showToast('Failed to delete', 'error');
+        }
+      }
+      break;
+  }
+}
+
+function initExplorerContextMenu() {
+  // Hide on click outside
+  document.addEventListener('click', (e) => {
+    if (ui.explorerContextMenu && !ui.explorerContextMenu.contains(e.target)) {
+      hideExplorerContextMenu();
+    }
+  });
+
+  // Hide on escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hideExplorerContextMenu();
+    }
+  });
+
+  // Handle menu item clicks
+  if (ui.explorerContextMenu) {
+    ui.explorerContextMenu.addEventListener('click', (e) => {
+      const item = e.target.closest('.context-menu-item');
+      if (item && !item.disabled) {
+        const action = item.dataset.action;
+        handleContextMenuAction(action);
+      }
+    });
+  }
+}

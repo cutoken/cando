@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,6 +49,9 @@ var lucideScript []byte
 
 //go:embed webui/openrouter-models.json
 var openrouterModels []byte
+
+//go:embed webui/bell.wav
+var bellSound []byte
 
 var templates *template.Template
 
@@ -130,6 +134,7 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/app.js", s.handleScript)
 	mux.HandleFunc("/alpine.js", s.handleAlpine)
 	mux.HandleFunc("/lucide.js", s.handleLucide)
+	mux.HandleFunc("/bell.wav", s.handleBellSound)
 	mux.HandleFunc("/openrouter-models.json", s.handleOpenRouterModels)
 	mux.HandleFunc("/api/session", s.handleSession)
 	mux.HandleFunc("/api/prompt", s.handlePrompt)
@@ -166,6 +171,11 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/files/create", s.handleFilesCreate)
 	mux.HandleFunc("/api/files/mkdir", s.handleFilesMkdir)
 	mux.HandleFunc("/api/files/reveal", s.handleFilesReveal)
+	mux.HandleFunc("/api/files/delete", s.handleFilesDelete)
+	mux.HandleFunc("/api/files/rename", s.handleFilesRename)
+	mux.HandleFunc("/api/preview", s.handlePreview)           // Legacy query-based
+	mux.HandleFunc("/api/preview/", s.handlePreviewPath)      // Path-based for relative URLs
+	mux.HandleFunc("/api/preview-enabled", s.handlePreviewEnabled)
 
 	server := &http.Server{
 		Addr:    actualAddr,
@@ -314,6 +324,11 @@ func (s *webServer) handleAlpine(w http.ResponseWriter, r *http.Request) {
 func (s *webServer) handleLucide(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	_, _ = w.Write(lucideScript)
+}
+
+func (s *webServer) handleBellSound(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "audio/wav")
+	_, _ = w.Write(bellSound)
 }
 
 func (s *webServer) handleOpenRouterModels(w http.ResponseWriter, r *http.Request) {
@@ -2534,6 +2549,137 @@ func (s *webServer) handleFilesReveal(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *webServer) handleFilesDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		Path      string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" || req.Path == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace and path required")
+		return
+	}
+
+	fullPath := filepath.Join(req.Workspace, req.Path)
+	fullPath = filepath.Clean(fullPath)
+
+	// Prevent path traversal
+	if !strings.HasPrefix(fullPath, filepath.Clean(req.Workspace)+string(filepath.Separator)) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check if path exists
+	info, err := os.Stat(fullPath)
+	if os.IsNotExist(err) {
+		s.respondError(w, r, http.StatusNotFound, "file not found")
+		return
+	}
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("cannot access file: %v", err))
+		return
+	}
+
+	// Delete file or directory
+	if info.IsDir() {
+		if err := os.RemoveAll(fullPath); err != nil {
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to delete directory: %v", err))
+			return
+		}
+	} else {
+		if err := os.Remove(fullPath); err != nil {
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to delete file: %v", err))
+			return
+		}
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status": "deleted",
+		"path":   req.Path,
+	})
+}
+
+func (s *webServer) handleFilesRename(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Workspace string `json:"workspace"`
+		OldPath   string `json:"oldPath"`
+		NewPath   string `json:"newPath"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Workspace == "" || req.OldPath == "" || req.NewPath == "" {
+		s.respondError(w, r, http.StatusBadRequest, "workspace, oldPath, and newPath required")
+		return
+	}
+
+	oldFullPath := filepath.Join(req.Workspace, req.OldPath)
+	oldFullPath = filepath.Clean(oldFullPath)
+	newFullPath := filepath.Join(req.Workspace, req.NewPath)
+	newFullPath = filepath.Clean(newFullPath)
+
+	cleanWorkspace := filepath.Clean(req.Workspace) + string(filepath.Separator)
+
+	// Prevent path traversal for both paths
+	if !strings.HasPrefix(oldFullPath, cleanWorkspace) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+	if !strings.HasPrefix(newFullPath, cleanWorkspace) {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check if source exists
+	if _, err := os.Stat(oldFullPath); os.IsNotExist(err) {
+		s.respondError(w, r, http.StatusNotFound, "source file not found")
+		return
+	}
+
+	// Check if destination already exists
+	if _, err := os.Stat(newFullPath); err == nil {
+		s.respondError(w, r, http.StatusConflict, "destination already exists")
+		return
+	}
+
+	// Ensure parent directory exists for new path
+	newDir := filepath.Dir(newFullPath)
+	if err := os.MkdirAll(newDir, 0755); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to create directory: %v", err))
+		return
+	}
+
+	// Rename/move the file
+	if err := os.Rename(oldFullPath, newFullPath); err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("failed to rename: %v", err))
+		return
+	}
+
+	s.writeJSON(w, r, map[string]interface{}{
+		"status":  "renamed",
+		"oldPath": req.OldPath,
+		"newPath": req.NewPath,
+	})
+}
+
 func (s *webServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
@@ -2861,5 +3007,225 @@ func getManualInstallCommand() string {
 		return fmt.Sprintf(
 			"curl -fsSL https://raw.githubusercontent.com/%s/%s/main/install.sh | bash",
 			githubRepoOwner, githubRepoName)
+	}
+}
+
+// handlePreview serves files from workspace for preview in the UI
+func (s *webServer) handlePreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	workspace := s.getWorkspaceFromRequest(r)
+	if workspace == "" || !s.workspaceExists(workspace) {
+		s.respondError(w, r, http.StatusBadRequest, "select a workspace first")
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		s.respondError(w, r, http.StatusBadRequest, "path parameter required")
+		return
+	}
+
+	// Construct full path and validate it's within workspace
+	fullPath := filepath.Join(workspace, filePath)
+	fullPath = filepath.Clean(fullPath)
+
+	cleanWorkspace := filepath.Clean(workspace)
+	if !strings.HasPrefix(fullPath, cleanWorkspace+string(filepath.Separator)) && fullPath != cleanWorkspace {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check file exists and is not a directory
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			s.respondError(w, r, http.StatusNotFound, "file not found")
+		} else {
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("cannot access file: %v", err))
+		}
+		return
+	}
+	if info.IsDir() {
+		s.respondError(w, r, http.StatusBadRequest, "cannot preview directories")
+		return
+	}
+
+	// Set Content-Type based on file extension (http.ServeFile doesn't always detect correctly)
+	ext := strings.ToLower(filepath.Ext(fullPath))
+	mimeTypes := map[string]string{
+		".html": "text/html; charset=utf-8",
+		".htm":  "text/html; charset=utf-8",
+		".css":  "text/css; charset=utf-8",
+		".js":   "application/javascript; charset=utf-8",
+		".json": "application/json; charset=utf-8",
+		".xml":  "application/xml; charset=utf-8",
+		".svg":  "image/svg+xml",
+		".png":  "image/png",
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".gif":  "image/gif",
+		".webp": "image/webp",
+		".ico":  "image/x-icon",
+		".pdf":  "application/pdf",
+		".txt":  "text/plain; charset=utf-8",
+		".md":   "text/markdown; charset=utf-8",
+		".csv":  "text/csv; charset=utf-8",
+	}
+	if contentType, ok := mimeTypes[ext]; ok {
+		w.Header().Set("Content-Type", contentType)
+	}
+
+	http.ServeFile(w, r, fullPath)
+}
+
+// handlePreviewPath serves files from workspace using path-based URLs for proper relative URL resolution
+// URL format: /api/preview/{base64-encoded-workspace}/{filepath}
+func (s *webServer) handlePreviewPath(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	// Parse path: /api/preview/{base64-workspace}/{file/path}
+	path := strings.TrimPrefix(r.URL.Path, "/api/preview/")
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) < 1 || parts[0] == "" {
+		s.respondError(w, r, http.StatusBadRequest, "invalid preview path")
+		return
+	}
+
+	// Decode workspace from base64
+	// JS uses btoa() then replaces +/ with -_ and strips padding
+	// We need to restore padding and decode
+	encoded := parts[0]
+	// Replace URL-safe chars back to standard base64
+	encoded = strings.ReplaceAll(encoded, "-", "+")
+	encoded = strings.ReplaceAll(encoded, "_", "/")
+	// Add padding if needed
+	switch len(encoded) % 4 {
+	case 2:
+		encoded += "=="
+	case 3:
+		encoded += "="
+	}
+	workspaceBytes, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		s.respondError(w, r, http.StatusBadRequest, "invalid workspace encoding")
+		return
+	}
+	workspace := string(workspaceBytes)
+
+	if !s.workspaceExists(workspace) {
+		s.respondError(w, r, http.StatusBadRequest, "workspace not found")
+		return
+	}
+
+	// Get file path (default to index.html if just workspace)
+	filePath := ""
+	if len(parts) > 1 {
+		filePath = parts[1]
+	}
+	if filePath == "" {
+		filePath = "index.html"
+	}
+
+	// Construct full path and validate it's within workspace
+	fullPath := filepath.Join(workspace, filePath)
+	fullPath = filepath.Clean(fullPath)
+
+	cleanWorkspace := filepath.Clean(workspace)
+	if !strings.HasPrefix(fullPath, cleanWorkspace+string(filepath.Separator)) && fullPath != cleanWorkspace {
+		s.respondError(w, r, http.StatusForbidden, "path traversal not allowed")
+		return
+	}
+
+	// Check file exists and is not a directory
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			s.respondError(w, r, http.StatusNotFound, "file not found")
+		} else {
+			s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("cannot access file: %v", err))
+		}
+		return
+	}
+	if info.IsDir() {
+		s.respondError(w, r, http.StatusBadRequest, "cannot preview directories")
+		return
+	}
+
+	// Set Content-Type based on file extension
+	ext := strings.ToLower(filepath.Ext(fullPath))
+	mimeTypes := map[string]string{
+		".html": "text/html; charset=utf-8",
+		".htm":  "text/html; charset=utf-8",
+		".css":  "text/css; charset=utf-8",
+		".js":   "application/javascript; charset=utf-8",
+		".json": "application/json; charset=utf-8",
+		".xml":  "application/xml; charset=utf-8",
+		".svg":  "image/svg+xml",
+		".png":  "image/png",
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".gif":  "image/gif",
+		".webp": "image/webp",
+		".ico":  "image/x-icon",
+		".pdf":  "application/pdf",
+		".txt":  "text/plain; charset=utf-8",
+		".md":   "text/markdown; charset=utf-8",
+		".csv":  "text/csv; charset=utf-8",
+		".woff": "font/woff",
+		".woff2": "font/woff2",
+		".ttf":  "font/ttf",
+		".eot":  "application/vnd.ms-fontobject",
+	}
+	if contentType, ok := mimeTypes[ext]; ok {
+		w.Header().Set("Content-Type", contentType)
+	}
+
+	http.ServeFile(w, r, fullPath)
+}
+
+// handlePreviewEnabled gets/sets preview pane enabled state for a workspace
+func (s *webServer) handlePreviewEnabled(w http.ResponseWriter, r *http.Request) {
+	workspace := s.getWorkspaceFromRequest(r)
+	if workspace == "" || !s.workspaceExists(workspace) {
+		s.respondError(w, r, http.StatusBadRequest, "select a workspace first")
+		return
+	}
+
+	wsCtx, err := s.agent.GetOrCreateWorkspaceContext(workspace)
+	if err != nil {
+		s.respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("get workspace context: %v", err))
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"enabled": wsCtx.previewEnabled,
+		})
+
+	case http.MethodPost:
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.respondError(w, r, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		wsCtx.previewEnabled = req.Enabled
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"enabled": wsCtx.previewEnabled,
+		})
+
+	default:
+		s.respondError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }

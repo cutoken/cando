@@ -73,11 +73,12 @@ type promptExit struct{}
 
 // WorkspaceContext holds state, tools, and profile for a specific workspace
 type WorkspaceContext struct {
-	states   *state.Manager
-	tools    *tooling.Registry
-	profile  contextprofile.Profile
-	root     string
-	planMode bool // When true, LLM is instructed to only plan/analyze, not make changes
+	states         *state.Manager
+	tools          *tooling.Registry
+	profile        contextprofile.Profile
+	root           string
+	planMode       bool // When true, LLM is instructed to only plan/analyze, not make changes
+	previewEnabled bool // When true, preview_file tool shows content in preview pane
 }
 
 // loadProjectInstructions reads the project instructions file for a workspace.
@@ -805,6 +806,9 @@ func (a *Agent) respondWithCallbacksForWorkspace(ctx context.Context, userInput 
 		defer emitter.SetCompactionCallback(nil)
 	}
 
+	// Inject preview state into context for preview_file tool
+	ctx = tooling.WithPreviewState(ctx, wsCtx.previewEnabled)
+
 	return a.respondLoop(ctx, conv, wsCtx.states, wsCtx.tools, wsCtx.profile, callback, wsCtx.root, wsCtx.planMode)
 }
 
@@ -1092,6 +1096,20 @@ func (a *Agent) processToolCallsWithCallback(ctx context.Context, conv *state.Co
 				callback("plan_update", map[string]any{
 					"plan": result,
 				})
+			}
+		}
+		// Emit preview event when preview_file tool is called successfully
+		if err == nil && call.Function.Name == "preview_file" {
+			var previewResult map[string]any
+			if jsonErr := json.Unmarshal([]byte(result), &previewResult); jsonErr == nil {
+				if previewEnabled, ok := previewResult["preview_enabled"].(bool); ok && previewEnabled {
+					if callback != nil {
+						callback("preview", map[string]any{
+							"path":  previewResult["path"],
+							"title": previewResult["title"],
+						})
+					}
+				}
 			}
 		}
 		if err := stateManager.Save(conv); err != nil {
@@ -2003,10 +2021,11 @@ func (a *Agent) GetOrCreateWorkspaceContext(workspacePath string) (*WorkspaceCon
 
 	// Create and cache context
 	ctx := &WorkspaceContext{
-		states:  newStates,
-		tools:   newTools,
-		profile: workspaceProfile,
-		root:    absRoot,
+		states:         newStates,
+		tools:          newTools,
+		profile:        workspaceProfile,
+		root:           absRoot,
+		previewEnabled: true, // Preview pane enabled by default
 	}
 	a.workspaceContexts[absRoot] = ctx
 

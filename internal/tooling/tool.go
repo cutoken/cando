@@ -180,6 +180,7 @@ func DefaultTools(opts Options) []Tool {
 		NewGlobTool(guard),
 		NewGrepTool(guard),
 		NewVisionToolWithConfig(guard, opts.CredManager, opts.ZAIVisionURL, opts.OpenRouterVisionURL),
+		NewPreviewFileTool(guard),
 		bgTool,
 	}
 }
