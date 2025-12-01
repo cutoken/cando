@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -32,6 +34,8 @@ import (
 	"cando/internal/state"
 	"cando/internal/tooling"
 	"cando/internal/zai"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Version is set via -ldflags during build
@@ -110,12 +114,14 @@ func main() {
 		log.Fatalf("Failed to create config directory: %v", err)
 	}
 	logPath := filepath.Join(configDir, "cando.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		log.Fatalf("Failed to open log file: %v", err)
+	logWriter := &lumberjack.Logger{
+		Filename:   logPath,
+		MaxSize:    5, // MB
+		MaxBackups: 5,
+		Compress:   true,
 	}
-	defer logFile.Close()
-	logger := log.New(logFile, "cando ", log.LstdFlags|log.Lmicroseconds)
+	defer logWriter.Close()
+	logger := log.New(logWriter, "cando ", log.LstdFlags|log.Lmicroseconds)
 
 	// Set the logging package's logger to use the file instead of stdout
 	logging.Logger = logger
@@ -321,8 +327,17 @@ func main() {
 		listenPort = *port
 	}
 
-	// Find available port
-	listenAddr := findAvailablePort(listenPort)
+	// Check if port is already in use by another cando instance
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", listenPort)
+	if existingCando := checkExistingInstance(listenAddr); existingCando {
+		fmt.Printf("Cando is already running at http://%s\n", listenAddr)
+		fmt.Println("Opening browser...")
+		openBrowser("http://" + listenAddr)
+		return
+	}
+
+	// Find available port if preferred port is taken by something else
+	listenAddr = findAvailablePort(listenPort)
 
 	// Start web UI
 	fmt.Printf("Starting Cando...\n")
@@ -355,6 +370,41 @@ func findAvailablePort(startPort int) string {
 	}
 	// Fallback to let OS pick
 	return "127.0.0.1:0"
+}
+
+// checkExistingInstance checks if cando is already running on the given address
+// by calling /api/health endpoint
+func checkExistingInstance(addr string) bool {
+	// First check if port is in use at all
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	if err != nil {
+		// Port not in use
+		return false
+	}
+	conn.Close()
+
+	// Port is in use, check if it's cando via health endpoint
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get("http://" + addr + "/api/health")
+	if err != nil {
+		// Something is on the port but not responding to HTTP
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	// Check response body for cando signature
+	var health struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+		return false
+	}
+
+	return health.Status == "ok"
 }
 
 func projectStorageRoot(workspace string) (string, error) {

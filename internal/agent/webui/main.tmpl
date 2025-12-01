@@ -82,6 +82,31 @@
         </div>
       </div>
 
+      <!-- Plan Mode Toggle (right side, separate section) -->
+      <div class="toolbar-toggles">
+        <button id="planModeBtn" class="pane-toggle-btn" title="Plan Mode (analyze only, no file changes)">
+          <i data-lucide="clipboard-list"></i>
+        </button>
+        <button id="bellToggleBtn" class="pane-toggle-btn active" title="Bell enabled (plays sound when task completes)">
+          <i data-lucide="bell"></i>
+        </button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Pane Toggle Buttons (right side) -->
+      <div class="pane-toggles">
+        <button id="toggleChatBtn" class="pane-toggle-btn active" title="Toggle Chat">
+          <i data-lucide="message-circle"></i>
+        </button>
+        <button id="toggleEditorBtn" class="pane-toggle-btn" title="Toggle Editor">
+          <i data-lucide="code"></i>
+        </button>
+        <button id="togglePreviewBtn" class="pane-toggle-btn" title="Toggle Preview">
+          <i data-lucide="eye"></i>
+        </button>
+      </div>
+
       <div id="messageBanner" class="feed-banner hidden"></div>
     </div>
 
@@ -93,7 +118,7 @@
         </button>
         <div class="explorer-toolbar">
           <button id="newFileBtn" class="explorer-toolbar-btn" title="New File">
-            <i data-lucide="file-plus"></i>
+            <i data-lucide="file-plus-2"></i>
           </button>
           <button id="newFolderBtn" class="explorer-toolbar-btn" title="New Folder">
             <i data-lucide="folder-plus"></i>
@@ -113,6 +138,35 @@
         <!-- Conversation Panel (includes editor when files open) -->
         {{template "chat" .}}
       </div>
+
+      <!-- Preview Panel Resize Handle -->
+      <div id="previewResizeHandle" class="preview-resize-handle hidden"></div>
+
+      <!-- Preview Panel (right side, hidden by default) -->
+      <aside id="previewPanel" class="preview-panel hidden">
+        <div class="preview-header">
+          <span id="previewTitle" class="preview-title">Preview</span>
+          <div class="preview-actions">
+            <button id="previewOpenNewTab" class="icon-btn-sm" title="Open in New Tab">
+              <i data-lucide="external-link"></i>
+            </button>
+            <button id="previewFullscreenBtn" class="icon-btn-sm" title="Fullscreen">
+              <i data-lucide="maximize"></i>
+            </button>
+            <button id="previewCloseBtn" class="icon-btn-sm" title="Close Preview">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+        </div>
+        <div class="preview-content">
+          <div id="previewEmpty" class="preview-empty">
+            <i data-lucide="eye-off"></i>
+            <p>No preview available</p>
+            <span>Ask the agent to create visual content like HTML pages, images, or diagrams</span>
+          </div>
+          <iframe id="previewFrame" class="preview-frame hidden" sandbox="allow-scripts allow-same-origin"></iframe>
+        </div>
+      </aside>
     </div>
 
     <!-- Composer (full width at bottom) -->
@@ -470,5 +524,22 @@
       }
     });
   </script>
+
+  <!-- File Explorer Context Menu -->
+  <div id="explorerContextMenu" class="context-menu" style="display: none;">
+    <button class="context-menu-item" data-action="preview">
+      <i data-lucide="eye"></i>
+      <span>Preview</span>
+    </button>
+    <button class="context-menu-item" data-action="rename">
+      <i data-lucide="pencil"></i>
+      <span>Rename</span>
+    </button>
+    <div class="context-menu-divider"></div>
+    <button class="context-menu-item danger" data-action="delete">
+      <i data-lucide="trash-2"></i>
+      <span>Delete</span>
+    </button>
+  </div>
 </body>
 </html>

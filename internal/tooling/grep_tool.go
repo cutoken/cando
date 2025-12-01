@@ -3,7 +3,6 @@ package tooling
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -140,7 +139,7 @@ func (g *GrepTool) Call(ctx context.Context, args map[string]any) (string, error
 		return "", err
 	}
 
-	data, err := json.Marshal(results)
+	data, err := jsonMarshalNoEscape(results)
 	if err != nil {
 		return "", err
 	}

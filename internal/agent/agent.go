@@ -73,10 +73,12 @@ type promptExit struct{}
 
 // WorkspaceContext holds state, tools, and profile for a specific workspace
 type WorkspaceContext struct {
-	states  *state.Manager
-	tools   *tooling.Registry
-	profile contextprofile.Profile
-	root    string
+	states         *state.Manager
+	tools          *tooling.Registry
+	profile        contextprofile.Profile
+	root           string
+	planMode       bool // When true, LLM is instructed to only plan/analyze, not make changes
+	previewEnabled bool // When true, preview_file tool shows content in preview pane
 }
 
 // loadProjectInstructions reads the project instructions file for a workspace.
@@ -112,6 +114,187 @@ func injectProjectInstructions(messages []state.Message, instructions string) []
 		}
 	}
 	return result
+}
+
+// loadProjectFacts reads project facts from the workspace storage.
+// Returns empty slice if no facts file exists.
+func loadProjectFacts(workspaceRoot string) []string {
+	if workspaceRoot == "" {
+		return nil
+	}
+	storageRoot, err := ProjectStorageRoot(workspaceRoot)
+	if err != nil {
+		return nil
+	}
+	factsPath := filepath.Join(storageRoot, "project_facts.json")
+	content, err := os.ReadFile(factsPath)
+	if err != nil {
+		return nil
+	}
+	var facts []string
+	if err := json.Unmarshal(content, &facts); err != nil {
+		return nil
+	}
+	return facts
+}
+
+// saveProjectFacts writes project facts to the workspace storage.
+func saveProjectFacts(workspaceRoot string, facts []string) error {
+	if workspaceRoot == "" {
+		return fmt.Errorf("no workspace root")
+	}
+	storageRoot, err := ProjectStorageRoot(workspaceRoot)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storageRoot, 0o755); err != nil {
+		return err
+	}
+	factsPath := filepath.Join(storageRoot, "project_facts.json")
+	content, err := json.MarshalIndent(facts, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(factsPath, content, 0o644)
+}
+
+// planModeHint is the instruction appended when plan mode is enabled
+const planModeHint = `
+
+---
+PLAN MODE ENABLED: The user has enabled plan/analysis mode. You should ONLY:
+- Analyze code and explain what you find
+- Plan and outline changes without implementing them
+- Answer questions and provide recommendations
+- Research and investigate
+
+DO NOT make any file changes. If the user asks you to implement something, politely remind them that plan mode is enabled and they should turn it off if they want you to make changes.`
+
+// injectPlanModeHint appends the plan mode instruction to the system message
+func injectPlanModeHint(messages []state.Message) []state.Message {
+	if len(messages) == 0 {
+		return messages
+	}
+
+	// Make a copy to avoid modifying the original
+	result := make([]state.Message, len(messages))
+	copy(result, messages)
+
+	// Find and modify the system message
+	for i, msg := range result {
+		if msg.Role == "system" {
+			result[i].Content = msg.Content + planModeHint
+			break
+		}
+	}
+	return result
+}
+
+// injectProjectFacts modifies messages to append project facts to the system message
+func injectProjectFacts(messages []state.Message, facts []string) []state.Message {
+	if len(facts) == 0 || len(messages) == 0 {
+		return messages
+	}
+
+	// Make a copy to avoid modifying the original
+	result := make([]state.Message, len(messages))
+	copy(result, messages)
+
+	// Format facts as bullet points
+	var factsText strings.Builder
+	for _, fact := range facts {
+		factsText.WriteString("- ")
+		factsText.WriteString(fact)
+		factsText.WriteString("\n")
+	}
+
+	// Find and modify the system message (usually the first one)
+	for i, msg := range result {
+		if msg.Role == "system" {
+			result[i].Content = msg.Content + "\n\n---\nProject Facts (learned from previous sessions):\n" + factsText.String()
+			break
+		}
+	}
+	return result
+}
+
+// projectFactsExtractor implements contextprofile.FactsExtractor
+type projectFactsExtractor struct {
+	client        llm.Client
+	model         string
+	workspaceRoot string
+	logger        *log.Logger
+}
+
+// ExtractFacts extracts project facts from the conversation before compaction
+func (e *projectFactsExtractor) ExtractFacts(ctx context.Context, messages []state.Message) error {
+	if e.workspaceRoot == "" || e.client == nil {
+		return nil
+	}
+
+	// Load existing facts
+	existingFacts := loadProjectFacts(e.workspaceRoot)
+
+	// Build the conversation content for extraction
+	var convBuilder strings.Builder
+	for _, msg := range messages {
+		if msg.Role == "system" {
+			continue // Skip system messages
+		}
+		convBuilder.WriteString(fmt.Sprintf("[%s]: %s\n\n", msg.Role, msg.Content))
+	}
+
+	// Build user message with conversation and existing facts
+	existingFactsJSON, _ := json.Marshal(existingFacts)
+	userContent := fmt.Sprintf("Conversation:\n%s\n\nExisting facts:\n%s", convBuilder.String(), string(existingFactsJSON))
+
+	// Make LLM call to extract facts
+	resp, err := e.client.Chat(ctx, llm.ChatRequest{
+		Model: e.model,
+		Messages: []state.Message{
+			{Role: "system", Content: prompts.FactsExtraction()},
+			{Role: "user", Content: userContent},
+		},
+		Temperature: 0.3,
+	})
+	if err != nil {
+		return fmt.Errorf("facts extraction LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return fmt.Errorf("no response from LLM")
+	}
+
+	// Parse JSON response
+	responseText := strings.TrimSpace(resp.Choices[0].Message.Content)
+	var newFacts []string
+	if err := json.Unmarshal([]byte(responseText), &newFacts); err != nil {
+		// Try to extract JSON from response if it has extra text
+		start := strings.Index(responseText, "[")
+		end := strings.LastIndex(responseText, "]")
+		if start >= 0 && end > start {
+			if err := json.Unmarshal([]byte(responseText[start:end+1]), &newFacts); err != nil {
+				e.logger.Printf("failed to parse facts response: %v", err)
+				return nil // Don't fail on parse errors
+			}
+		} else {
+			e.logger.Printf("failed to parse facts response: %v", err)
+			return nil
+		}
+	}
+
+	// Limit to ~200 facts max
+	if len(newFacts) > 200 {
+		newFacts = newFacts[:200]
+	}
+
+	// Save updated facts
+	if err := saveProjectFacts(e.workspaceRoot, newFacts); err != nil {
+		return fmt.Errorf("failed to save facts: %w", err)
+	}
+
+	e.logger.Printf("extracted %d project facts", len(newFacts))
+	return nil
 }
 
 // Agent wires the CLI, state machine, tools, and LLM client together.
@@ -594,7 +777,7 @@ func (a *Agent) respondLoopCLI(ctx context.Context, conv *state.Conversation, st
 			return choice.Message.Content, choice.FinishReason, nil
 		}
 
-		if err := a.processToolCallsWithCallback(ctx, conv, choice.Message.ToolCalls, nil, stateManager, a.tools); err != nil {
+		if err := a.processToolCallsWithCallback(ctx, conv, choice.Message.ToolCalls, nil, stateManager, a.tools, false); err != nil {
 			return "", "", err
 		}
 		if mutated, err := a.profile.AfterResponse(ctx, conv); err != nil {
@@ -623,7 +806,10 @@ func (a *Agent) respondWithCallbacksForWorkspace(ctx context.Context, userInput 
 		defer emitter.SetCompactionCallback(nil)
 	}
 
-	return a.respondLoop(ctx, conv, wsCtx.states, wsCtx.tools, wsCtx.profile, callback, wsCtx.root)
+	// Inject preview state into context for preview_file tool
+	ctx = tooling.WithPreviewState(ctx, wsCtx.previewEnabled)
+
+	return a.respondLoop(ctx, conv, wsCtx.states, wsCtx.tools, wsCtx.profile, callback, wsCtx.root, wsCtx.planMode)
 }
 
 func (a *Agent) respondWithCallbacks(ctx context.Context, userInput string, callback StreamCallback) (string, string, error) {
@@ -639,12 +825,13 @@ func (a *Agent) respondWithCallbacks(ctx context.Context, userInput string, call
 		defer emitter.SetCompactionCallback(nil)
 	}
 
-	return a.respondLoop(ctx, conv, a.states, a.tools, a.profile, callback, "")
+	return a.respondLoop(ctx, conv, a.states, a.tools, a.profile, callback, "", false)
 }
 
-func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, stateManager *state.Manager, tools *tooling.Registry, profile contextprofile.Profile, callback StreamCallback, workspaceRoot string) (string, string, error) {
-	// Load project instructions once per conversation turn
+func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, stateManager *state.Manager, tools *tooling.Registry, profile contextprofile.Profile, callback StreamCallback, workspaceRoot string, planMode bool) (string, string, error) {
+	// Load project instructions and facts once per conversation turn
 	projectInstructions := loadProjectInstructions(workspaceRoot)
+	projectFacts := loadProjectFacts(workspaceRoot)
 
 	for {
 		prepared, err := profile.Prepare(ctx, conv)
@@ -661,8 +848,14 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 			messages = conv.Messages()
 		}
 
-		// Inject project instructions into system message
+		// Inject project instructions and facts into system message
 		messages = injectProjectInstructions(messages, projectInstructions)
+		messages = injectProjectFacts(messages, projectFacts)
+
+		// Inject plan mode hint if enabled
+		if planMode {
+			messages = injectPlanModeHint(messages)
+		}
 
 		// Inject hidden ultrathink message when force thinking is enabled
 		// Only inject for user messages, not for tool call response rounds
@@ -784,7 +977,7 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 			}
 		}
 
-		if err := a.processToolCallsWithCallback(ctx, conv, choice.Message.ToolCalls, callback, stateManager, tools); err != nil {
+		if err := a.processToolCallsWithCallback(ctx, conv, choice.Message.ToolCalls, callback, stateManager, tools, planMode); err != nil {
 			return "", "", err
 		}
 		if mutated, err := profile.AfterResponse(ctx, conv); err != nil {
@@ -808,11 +1001,37 @@ func (a *Agent) respondLoop(ctx context.Context, conv *state.Conversation, state
 }
 
 func (a *Agent) processToolCalls(ctx context.Context, conv *state.Conversation, calls []state.ToolCall) error {
-	return a.processToolCallsWithCallback(ctx, conv, calls, nil, a.states, a.tools)
+	return a.processToolCallsWithCallback(ctx, conv, calls, nil, a.states, a.tools, false)
 }
 
-func (a *Agent) processToolCallsWithCallback(ctx context.Context, conv *state.Conversation, calls []state.ToolCall, callback StreamCallback, stateManager *state.Manager, tools *tooling.Registry) error {
+// blockedToolsInPlanMode lists tools that are not allowed when plan mode is enabled
+var blockedToolsInPlanMode = map[string]bool{
+	"write_file": true,
+	"edit_file":  true,
+}
+
+func (a *Agent) processToolCallsWithCallback(ctx context.Context, conv *state.Conversation, calls []state.ToolCall, callback StreamCallback, stateManager *state.Manager, tools *tooling.Registry, planMode bool) error {
 	for _, call := range calls {
+		// Block editing tools in plan mode
+		if planMode && blockedToolsInPlanMode[call.Function.Name] {
+			msg := fmt.Sprintf("Tool '%s' is blocked: Plan mode is enabled. The user wants you to only analyze and plan, not make changes. Ask them to disable plan mode if they want you to implement changes.", call.Function.Name)
+			logging.UserLog("plan mode: blocked %s", call.Function.Name)
+			conv.Append(state.Message{Role: "tool", Name: call.Function.Name, Content: msg, ToolCallID: call.ID})
+			if callback != nil {
+				callback("tool_call_completed", map[string]any{
+					"id":       call.ID,
+					"function": call.Function.Name,
+					"result":   msg,
+					"error":    true,
+					"blocked":  true,
+				})
+			}
+			if err := stateManager.Save(conv); err != nil {
+				return fmt.Errorf("save blocked tool result: %w", err)
+			}
+			continue
+		}
+
 		tool, ok := tools.Lookup(call.Function.Name)
 		if !ok {
 			msg := fmt.Sprintf("tool %s not registered", call.Function.Name)
@@ -879,6 +1098,20 @@ func (a *Agent) processToolCallsWithCallback(ctx context.Context, conv *state.Co
 				})
 			}
 		}
+		// Emit preview event when preview_file tool is called successfully
+		if err == nil && call.Function.Name == "preview_file" {
+			var previewResult map[string]any
+			if jsonErr := json.Unmarshal([]byte(result), &previewResult); jsonErr == nil {
+				if previewEnabled, ok := previewResult["preview_enabled"].(bool); ok && previewEnabled {
+					if callback != nil {
+						callback("preview", map[string]any{
+							"path":  previewResult["path"],
+							"title": previewResult["title"],
+						})
+					}
+				}
+			}
+		}
 		if err := stateManager.Save(conv); err != nil {
 			return fmt.Errorf("save tool result: %w", err)
 		}
@@ -908,6 +1141,24 @@ func (a *Agent) callProviderWithRetry(ctx context.Context, req llm.ChatRequest, 
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return llm.ChatResponse{}, context.Canceled
 		}
+
+		// Check if this is a structured ProviderError
+		if pe, ok := llm.IsProviderError(err); ok {
+			// Non-retryable errors: emit event and return immediately
+			if !pe.Retryable {
+				a.logger.Printf("[agent] provider error (non-retryable): %s", pe.Error())
+				if callback != nil {
+					callback("provider_error", buildProviderErrorPayload(pe))
+				}
+				return llm.ChatResponse{}, err
+			}
+
+			// Use provider-specified retry delay if available and longer than current
+			if pe.RetryAfter != nil && *pe.RetryAfter > delay {
+				delay = *pe.RetryAfter
+			}
+		}
+
 		lastErr = err
 		if attempt == maxRetries {
 			break
@@ -936,6 +1187,22 @@ func (a *Agent) callProviderWithRetry(ctx context.Context, req llm.ChatRequest, 
 		}
 	}
 	return llm.ChatResponse{}, lastErr
+}
+
+// buildProviderErrorPayload creates the SSE event payload for provider errors
+func buildProviderErrorPayload(pe *llm.ProviderError) map[string]any {
+	payload := map[string]any{
+		"type":      string(pe.Type),
+		"provider":  pe.Provider,
+		"code":      pe.Code,
+		"message":   pe.Message,
+		"retryable": pe.Retryable,
+	}
+	if pe.ResetAt != nil {
+		payload["reset_at"] = pe.ResetAt.Format("15:04:05")
+		payload["reset_at_full"] = pe.ResetAt.Format(time.RFC3339)
+	}
+	return payload
 }
 
 func (a *Agent) setInFlightCancel(cancel context.CancelFunc) {
@@ -1107,7 +1374,6 @@ func (a *Agent) handlePlanToolResult(args map[string]any, output string) {
 		return
 	}
 	a.storeLastPlan(plan)
-	a.printPlanSnapshot("Plan updated by the model:", plan)
 }
 
 func (a *Agent) showPlan(ctx context.Context) error {
@@ -1732,6 +1998,16 @@ func (a *Agent) GetOrCreateWorkspaceContext(workspacePath string) (*WorkspaceCon
 		return nil, fmt.Errorf("create workspace profile: %w", err)
 	}
 
+	// Register facts extractor with the profile if it supports it
+	if setter, ok := workspaceProfile.(contextprofile.FactsExtractorSetter); ok {
+		setter.SetFactsExtractor(&projectFactsExtractor{
+			client:        a.client,
+			model:         a.profileModel,
+			workspaceRoot: absRoot,
+			logger:        a.logger,
+		})
+	}
+
 	// Add profile tools to registry
 	allTools := append(tooling.DefaultTools(newToolOpts), workspaceProfile.Tools()...)
 	newTools = tooling.NewRegistry(allTools...)
@@ -1745,10 +2021,11 @@ func (a *Agent) GetOrCreateWorkspaceContext(workspacePath string) (*WorkspaceCon
 
 	// Create and cache context
 	ctx := &WorkspaceContext{
-		states:  newStates,
-		tools:   newTools,
-		profile: workspaceProfile,
-		root:    absRoot,
+		states:         newStates,
+		tools:          newTools,
+		profile:        workspaceProfile,
+		root:           absRoot,
+		previewEnabled: true, // Preview pane enabled by default
 	}
 	a.workspaceContexts[absRoot] = ctx
 

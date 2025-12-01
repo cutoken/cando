@@ -438,6 +438,87 @@
             text-align: center;
         }
 
+        /* Beta Install Section */
+        .beta-section {
+            padding: 60px 0;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+        }
+
+        .beta-section h2 {
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+        }
+
+        .beta-section .beta-warning {
+            text-align: center;
+            color: #f59e0b;
+            font-size: 0.9rem;
+            margin-bottom: 24px;
+        }
+
+        .beta-install-section {
+            background: var(--bg);
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .beta-install-section h3 {
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+            color: #f59e0b;
+        }
+
+        .beta-install-section code {
+            display: block;
+            background: #1e293b;
+            padding: 16px;
+            border-radius: 6px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            color: #fbbf24;
+        }
+
+        .beta-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .beta-tab-button {
+            padding: 8px 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .beta-tab-button:hover {
+            background: var(--bg);
+        }
+
+        .beta-tab-button.active {
+            background: #f59e0b;
+            color: white;
+            border-color: #f59e0b;
+        }
+
+        .beta-tab-content {
+            display: none;
+        }
+
+        .beta-tab-content.active {
+            display: block;
+        }
+
         /* Footer */
         footer {
             border-top: 1px solid var(--border);
@@ -619,6 +700,37 @@
                 </div>
             </div>
         </section>
+
+        <!-- Beta Install Section (for advanced users) -->
+        <section id="beta" class="beta-section">
+            <div class="container">
+                <h2>Beta Releases</h2>
+                <p class="beta-warning">For testing and advanced users only. May contain bugs.</p>
+                <div class="beta-install-section">
+                    <h3>Install Beta Version</h3>
+                    <div class="beta-tabs">
+                        <button class="beta-tab-button active" data-os="linux">Linux</button>
+                        <button class="beta-tab-button" data-os="macos">macOS</button>
+                        <button class="beta-tab-button" data-os="windows">Windows</button>
+                    </div>
+                    <div class="beta-install-content">
+                        <div class="beta-tab-content active" data-os="linux">
+                            <code>curl -fsSL https://raw.githubusercontent.com/cutoken/cando/main/dev/install-beta.sh | bash</code>
+                            <p class="install-note">Installs as <strong>cando-beta</strong> to ~/.local/bin</p>
+                        </div>
+                        <div class="beta-tab-content" data-os="macos">
+                            <code>curl -fsSL https://raw.githubusercontent.com/cutoken/cando/main/dev/install-beta.sh | bash</code>
+                            <p class="install-note">Installs as <strong>cando-beta</strong> to ~/.local/bin</p>
+                        </div>
+                        <div class="beta-tab-content" data-os="windows">
+                            <code>irm https://raw.githubusercontent.com/cutoken/cando/main/dev/install-beta.ps1 | iex</code>
+                            <p class="install-note">Installs as <strong>cando-beta.exe</strong>, creates "Cando Beta" Start Menu shortcut</p>
+                        </div>
+                    </div>
+                    <p class="install-note" style="margin-top: 16px;">Beta installs separately from stable. Both can coexist.</p>
+                </div>
+            </div>
+        </section>
     </main>
 
     <footer>
@@ -647,36 +759,62 @@
             return 'linux';
         }
         
-        // Tab switching
+        // Tab switching for main install
         function setupTabs() {
             const buttons = document.querySelectorAll('.tab-button');
             const contents = document.querySelectorAll('.tab-content');
-            
+
             buttons.forEach(button => {
                 button.addEventListener('click', () => {
                     const os = button.dataset.os;
-                    
+
                     // Update active states
                     buttons.forEach(b => b.classList.remove('active'));
                     contents.forEach(c => c.classList.remove('active'));
-                    
+
                     button.classList.add('active');
                     document.querySelector(`.tab-content[data-os="${os}"]`).classList.add('active');
                 });
             });
         }
-        
+
+        // Tab switching for beta install
+        function setupBetaTabs() {
+            const buttons = document.querySelectorAll('.beta-tab-button');
+            const contents = document.querySelectorAll('.beta-tab-content');
+
+            buttons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const os = button.dataset.os;
+
+                    // Update active states
+                    buttons.forEach(b => b.classList.remove('active'));
+                    contents.forEach(c => c.classList.remove('active'));
+
+                    button.classList.add('active');
+                    document.querySelector(`.beta-tab-content[data-os="${os}"]`).classList.add('active');
+                });
+            });
+        }
+
         // Auto-detect and select OS on page load
         window.addEventListener('DOMContentLoaded', () => {
             const detectedOS = detectOS();
-            
-            // Click the appropriate tab
+
+            // Click the appropriate tab for main install
             const targetTab = document.querySelector(`.tab-button[data-os="${detectedOS}"]`);
             if (targetTab) {
                 targetTab.click();
             }
-            
+
+            // Click the appropriate tab for beta install
+            const betaTab = document.querySelector(`.beta-tab-button[data-os="${detectedOS}"]`);
+            if (betaTab) {
+                betaTab.click();
+            }
+
             setupTabs();
+            setupBetaTabs();
         });
     </script>
 </body>

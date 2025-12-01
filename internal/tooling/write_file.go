@@ -2,7 +2,6 @@ package tooling
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -111,6 +110,9 @@ func (t *WriteFileTool) Call(ctx context.Context, args map[string]any) (string, 
 }
 
 func (t *WriteFileTool) append(abs string, content string) (string, error) {
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return "", err
+	}
 	f, err := os.OpenFile(abs, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return "", err
@@ -120,7 +122,7 @@ func (t *WriteFileTool) append(abs string, content string) (string, error) {
 		return "", err
 	}
 	payload := map[string]any{"path": t.guard.Rel(abs), "mode": "append", "bytes": len(content)}
-	data, _ := json.Marshal(payload)
+	data, _ := jsonMarshalNoEscape(payload)
 	return string(data), nil
 }
 
@@ -147,7 +149,7 @@ func (t *WriteFileTool) insert(abs string, line int, content string) (string, er
 		"line":       insertAt + 1,
 		"linesAdded": len(newLines),
 	}
-	data, _ := json.Marshal(payload)
+	data, _ := jsonMarshalNoEscape(payload)
 	return string(data), nil
 }
 
@@ -185,7 +187,7 @@ func (t *WriteFileTool) replaceRange(abs string, start, end int, content string)
 		"end_line":     end,
 		"linesWritten": len(newLines),
 	}
-	data, _ := json.Marshal(payload)
+	data, _ := jsonMarshalNoEscape(payload)
 	return string(data), nil
 }
 

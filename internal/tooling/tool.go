@@ -180,6 +180,7 @@ func DefaultTools(opts Options) []Tool {
 		NewGlobTool(guard),
 		NewGrepTool(guard),
 		NewVisionToolWithConfig(guard, opts.CredManager, opts.ZAIVisionURL, opts.OpenRouterVisionURL),
+		NewPreviewFileTool(guard),
 		bgTool,
 	}
 }
@@ -376,7 +377,7 @@ func (l ListFilesTool) Call(ctx context.Context, args map[string]any) (string, e
 		"entries":   results,
 		"truncated": truncated,
 	}
-	data, err := json.Marshal(payload)
+	data, err := jsonMarshalNoEscape(payload)
 	if err != nil {
 		return "", err
 	}
@@ -445,7 +446,7 @@ func (r ReadFileTool) Call(ctx context.Context, args map[string]any) (string, er
 		"truncated": truncated,
 		"content":   string(data),
 	}
-	out, err := json.Marshal(payload)
+	out, err := jsonMarshalNoEscape(payload)
 	if err != nil {
 		return "", err
 	}
@@ -571,14 +572,6 @@ func (s *ShellTool) Call(ctx context.Context, args map[string]any) (string, erro
 	}
 
 	key := s.commandKey(resolvedDir, rawCmd)
-	count := s.recordCommand(key)
-	var warning string
-	switch {
-	case count > 5:
-		return "", errors.New("LLM went nuts repeating the same shell command")
-	case count > 3:
-		warning = fmt.Sprintf("What the fuck are you doing bro? This command has been repeated %d times.", count)
-	}
 	timeout := s.timeout
 	if override, ok := args["timeout_seconds"]; ok {
 		switch v := override.(type) {
@@ -641,12 +634,18 @@ func (s *ShellTool) Call(ctx context.Context, args map[string]any) (string, erro
 			logging.ErrorLog("shell: command failed: %v", runErr)
 			result["error"] = runErr.Error()
 		}
+	} else {
+		// Only count successful commands toward repeat detection
+		// Failed commands should be retryable without hitting the limit
+		count := s.recordCommand(key)
+		switch {
+		case count > 5:
+			result["warning"] = "This exact command has succeeded 5+ times. Consider if you're stuck in a loop."
+		case count > 3:
+			result["warning"] = fmt.Sprintf("This command has succeeded %d times. Are you repeating unnecessarily?", count)
+		}
 	}
-	if warning != "" {
-		logging.ErrorLog("shell: %s", warning)
-		result["warning"] = warning
-	}
-	data, err := json.Marshal(result)
+	data, err := jsonMarshalNoEscape(result)
 	if err != nil {
 		return "", err
 	}
@@ -764,7 +763,7 @@ func (p *PlanTool) Call(ctx context.Context, args map[string]any) (string, error
 		if err := p.appendHistoryToPath(historyPath, plan); err != nil {
 			return "", err
 		}
-		payload, err := json.Marshal(plan)
+		payload, err := jsonMarshalNoEscape(plan)
 		if err != nil {
 			return "", err
 		}
@@ -774,7 +773,7 @@ func (p *PlanTool) Call(ctx context.Context, args map[string]any) (string, error
 		if err != nil {
 			return "", err
 		}
-		payload, err := json.Marshal(plan)
+		payload, err := jsonMarshalNoEscape(plan)
 		if err != nil {
 			return "", err
 		}
@@ -791,7 +790,7 @@ func (p *PlanTool) Call(ctx context.Context, args map[string]any) (string, error
 		payload := map[string]any{
 			"entries": entries,
 		}
-		data, err := json.Marshal(payload)
+		data, err := jsonMarshalNoEscape(payload)
 		if err != nil {
 			return "", err
 		}
@@ -985,6 +984,12 @@ func newPathGuard(root string) (pathGuard, error) {
 	if err != nil {
 		return pathGuard{}, err
 	}
+	// Resolve symlinks to get canonical path (important on macOS where /Users can be /private/Users)
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err == nil {
+		abs = resolved
+	}
+	// If symlink resolution fails (e.g., path doesn't exist), use the absolute path as-is
 	return pathGuard{root: abs}, nil
 }
 
@@ -1001,10 +1006,21 @@ func (p pathGuard) Resolve(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if cleaned != p.root && !strings.HasPrefix(cleaned, p.root+string(os.PathSeparator)) {
-		return "", fmt.Errorf("path %s escapes workspace root", path)
+	// Try to resolve symlinks for accurate comparison (important on macOS)
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		// File doesn't exist yet - try immediate parent only (no chain walking)
+		parent := filepath.Dir(cleaned)
+		if resolvedParent, err := filepath.EvalSymlinks(parent); err == nil {
+			resolved = filepath.Join(resolvedParent, filepath.Base(cleaned))
+		} else {
+			resolved = cleaned
+		}
 	}
-	return cleaned, nil
+	if resolved != p.root && !strings.HasPrefix(resolved, p.root+string(os.PathSeparator)) {
+		return "", fmt.Errorf("path %s is outside workspace root %s - add this directory as a workspace first", path, p.root)
+	}
+	return resolved, nil
 }
 
 func (p pathGuard) Rel(path string) string {
@@ -1096,6 +1112,24 @@ func intArg(args map[string]any, key string, defaultVal int) int {
 	default:
 		return defaultVal
 	}
+}
+
+// jsonMarshalNoEscape marshals to JSON without escaping &, <, > as unicode.
+// Go's default json.Marshal escapes these for HTML safety, but this causes
+// issues when the LLM sees \u0026 instead of & and then uses it in edit_file.
+func jsonMarshalNoEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	// Encode adds a trailing newline, remove it for consistency with Marshal
+	out := buf.Bytes()
+	if len(out) > 0 && out[len(out)-1] == '\n' {
+		out = out[:len(out)-1]
+	}
+	return out, nil
 }
 
 func typeOf(isDir bool) string {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -188,21 +189,35 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 	// Log response status
 	c.logger.Printf("[z.ai] Response status: %d, size: %d bytes", resp.StatusCode, len(respBody))
 
-	// Check for Z.AI custom error format (returns 200 with error object)
+	// Check for Z.AI nested error format: {"error":{"code":"1308","message":"..."}}
+	type nestedErrorResponse struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	var nestedErr nestedErrorResponse
+	if err := json.Unmarshal(respBody, &nestedErr); err == nil && nestedErr.Error.Code != "" {
+		c.logger.Printf("[z.ai] API returned nested error: code=%s msg=%s", nestedErr.Error.Code, nestedErr.Error.Message)
+		return respPayload, parseZAIError(nestedErr.Error.Code, nestedErr.Error.Message)
+	}
+
+	// Check for Z.AI flat error format (returns 200 with error object)
 	// Only treat as error if it has the error structure (code + msg fields)
-	type errorResponse struct {
+	type flatErrorResponse struct {
 		Code    int    `json:"code"`
 		Msg     string `json:"msg"`
 		Success bool   `json:"success"`
 	}
-	var errResp errorResponse
-	if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Code != 0 && errResp.Msg != "" {
-		c.logger.Printf("[z.ai] API returned error: code=%d msg=%s", errResp.Code, errResp.Msg)
-		return respPayload, fmt.Errorf("z.ai api error: %s", errResp.Msg)
+	var flatErr flatErrorResponse
+	if err := json.Unmarshal(respBody, &flatErr); err == nil && flatErr.Code != 0 && flatErr.Msg != "" {
+		c.logger.Printf("[z.ai] API returned flat error: code=%d msg=%s", flatErr.Code, flatErr.Msg)
+		return respPayload, parseZAIError(fmt.Sprintf("%d", flatErr.Code), flatErr.Msg)
 	}
 
 	if resp.StatusCode >= 300 {
-		return respPayload, fmt.Errorf("api error: %s", strings.TrimSpace(string(respBody)))
+		// HTTP-level error - classify by status code
+		return respPayload, parseZAIHTTPError(resp.StatusCode, respBody)
 	}
 
 	// Try to parse as Z.AI enhanced response first
@@ -222,4 +237,123 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 		return respPayload, fmt.Errorf("no choices returned")
 	}
 	return respPayload, nil
+}
+
+// parseZAIError converts ZAI error codes to structured ProviderError
+func parseZAIError(code, message string) *llm.ProviderError {
+	pe := &llm.ProviderError{
+		Provider: "zai",
+		Code:     code,
+		Message:  message,
+	}
+
+	switch code {
+	case "1308": // Usage limit reached for X hour
+		pe.Type = llm.ErrorTypeQuotaExceeded
+		pe.Retryable = false
+		// Parse reset time from message: "Your limit will reset at 2025-11-30 23:41:21"
+		if resetTime := extractZAIResetTime(message); resetTime != nil {
+			pe.ResetAt = resetTime
+		}
+	case "1302": // High concurrency usage
+		pe.Type = llm.ErrorTypeRateLimit
+		pe.Retryable = true
+		delay := 30 * time.Second
+		pe.RetryAfter = &delay
+	case "1303": // High frequency usage
+		pe.Type = llm.ErrorTypeRateLimit
+		pe.Retryable = true
+		delay := 30 * time.Second
+		pe.RetryAfter = &delay
+	case "1304": // Daily call limit reached
+		pe.Type = llm.ErrorTypeQuotaExceeded
+		pe.Retryable = false
+	case "429": // HTTP 429 rate limit
+		pe.Type = llm.ErrorTypeRateLimit
+		pe.Retryable = true
+	default:
+		// Check for balance/auth related errors
+		lowerMsg := strings.ToLower(message)
+		if strings.Contains(lowerMsg, "balance") || strings.Contains(lowerMsg, "exhausted") {
+			pe.Type = llm.ErrorTypeInsufficientCredit
+			pe.Retryable = false
+		} else if strings.Contains(lowerMsg, "key") || strings.Contains(lowerMsg, "auth") {
+			pe.Type = llm.ErrorTypeAuth
+			pe.Retryable = false
+		} else {
+			pe.Type = llm.ErrorTypeUnknown
+			pe.Retryable = false
+		}
+	}
+
+	return pe
+}
+
+// extractZAIResetTime parses reset time from ZAI error messages
+// Pattern: "Your limit will reset at 2025-11-30 23:41:21"
+func extractZAIResetTime(msg string) *time.Time {
+	re := regexp.MustCompile(`reset at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})`)
+	if matches := re.FindStringSubmatch(msg); len(matches) == 2 {
+		// Parse as local time (ZAI likely returns server local time)
+		if t, err := time.ParseInLocation("2006-01-02 15:04:05", matches[1], time.Local); err == nil {
+			return &t
+		}
+	}
+	return nil
+}
+
+// parseZAIHTTPError handles HTTP-level errors (non-200 status codes)
+func parseZAIHTTPError(statusCode int, body []byte) *llm.ProviderError {
+	pe := &llm.ProviderError{
+		Provider: "zai",
+		Code:     fmt.Sprintf("%d", statusCode),
+		Message:  strings.TrimSpace(string(body)),
+	}
+
+	// Try to extract message from JSON error response
+	var errBody struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &errBody); err == nil {
+		if errBody.Error != "" {
+			pe.Message = errBody.Error
+		} else if errBody.Message != "" {
+			pe.Message = errBody.Message
+		}
+	}
+
+	// Classify by HTTP status code
+	switch statusCode {
+	case 401:
+		pe.Type = llm.ErrorTypeAuth
+		pe.Retryable = false
+		if pe.Message == "" {
+			pe.Message = "Invalid API key. Please check your ZAI credentials."
+		}
+	case 402:
+		pe.Type = llm.ErrorTypeInsufficientCredit
+		pe.Retryable = false
+		if pe.Message == "" {
+			pe.Message = "Insufficient credits. Please add balance to your ZAI account."
+		}
+	case 403:
+		pe.Type = llm.ErrorTypeModeration
+		pe.Retryable = false
+	case 429:
+		pe.Type = llm.ErrorTypeRateLimit
+		pe.Retryable = true
+		delay := 30 * time.Second
+		pe.RetryAfter = &delay
+	case 502, 503:
+		pe.Type = llm.ErrorTypeProviderDown
+		pe.Retryable = true
+		delay := 10 * time.Second
+		pe.RetryAfter = &delay
+	default:
+		pe.Type = llm.ErrorTypeUnknown
+		pe.Retryable = statusCode >= 500
+	}
+
+	return pe
 }
