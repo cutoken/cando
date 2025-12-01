@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -32,6 +34,8 @@ import (
 	"cando/internal/state"
 	"cando/internal/tooling"
 	"cando/internal/zai"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Version is set via -ldflags during build
@@ -110,12 +114,14 @@ func main() {
 		log.Fatalf("Failed to create config directory: %v", err)
 	}
 	logPath := filepath.Join(configDir, "cando.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		log.Fatalf("Failed to open log file: %v", err)
+	logWriter := &lumberjack.Logger{
+		Filename:   logPath,
+		MaxSize:    5, // MB
+		MaxBackups: 5,
+		Compress:   true,
 	}
-	defer logFile.Close()
-	logger := log.New(logFile, "cando ", log.LstdFlags|log.Lmicroseconds)
+	defer logWriter.Close()
+	logger := log.New(logWriter, "cando ", log.LstdFlags|log.Lmicroseconds)
 
 	// Set the logging package's logger to use the file instead of stdout
 	logging.Logger = logger
@@ -130,29 +136,42 @@ func main() {
 	}
 
 	// Set up workspace
+	// Only create project storage if --sandbox was explicitly provided
+	// "." in config is not a real explicit workspace - it's a legacy default
 	root := cfg.WorkspaceRoot
-	if root == "" {
-		root = "."
-	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		log.Fatalf("Failed to resolve workspace root: %v", err)
-	}
-	if err := os.MkdirAll(absRoot, 0o755); err != nil {
-		log.Fatalf("Failed to create workspace root: %v", err)
+	hasExplicitWorkspace := strings.TrimSpace(*sandboxPath) != "" || (root != "" && root != ".")
+	isPromptMode := *promptFlag != ""
+
+	// CLI prompt mode requires explicit workspace
+	if isPromptMode && !hasExplicitWorkspace {
+		log.Fatal("CLI mode (-p) requires --sandbox to specify the workspace directory.")
 	}
 
-	dataRoot, err := projectStorageRoot(absRoot)
-	if err != nil {
-		log.Fatalf("Failed to determine project storage root: %v", err)
-	}
-	if err := os.MkdirAll(dataRoot, 0o755); err != nil {
-		log.Fatalf("Failed to create project storage root: %v", err)
-	}
+	var absRoot, dataRoot string
+	if hasExplicitWorkspace {
+		var err error
+		absRoot, err = filepath.Abs(root)
+		if err != nil {
+			log.Fatalf("Failed to resolve workspace root: %v", err)
+		}
+		if err := os.MkdirAll(absRoot, 0o755); err != nil {
+			log.Fatalf("Failed to create workspace root: %v", err)
+		}
 
-	cfg.ConversationDir = filepath.Join(dataRoot, "conversations")
-	cfg.MemoryStorePath = filepath.Join(dataRoot, "memory.db")
-	cfg.HistoryPath = filepath.Join(dataRoot, ".history")
+		dataRoot, err = projectStorageRoot(absRoot)
+		if err != nil {
+			log.Fatalf("Failed to determine project storage root: %v", err)
+		}
+		if err := os.MkdirAll(dataRoot, 0o755); err != nil {
+			log.Fatalf("Failed to create project storage root: %v", err)
+		}
+
+		cfg.ConversationDir = filepath.Join(dataRoot, "conversations")
+		cfg.MemoryStorePath = filepath.Join(dataRoot, "memory.db")
+		cfg.HistoryPath = filepath.Join(dataRoot, ".history")
+	}
+	// For web UI without explicit workspace, project storage is created lazily
+	// when user selects a workspace via GetOrCreateWorkspaceContext
 
 	prompts.SetMetadata(buildEnvironmentMetadata(absRoot))
 
@@ -209,38 +228,50 @@ func main() {
 		logger.Println("No credentials configured - web UI will show onboarding")
 	}
 
-	// Initialize state manager
+	// Initialize state manager only when explicit workspace is provided
+	// For web UI mode without workspace, state managers are created per-workspace lazily
+	var states *state.Manager
 	combinedPrompt := prompts.Combine(cfg.SystemPrompt)
-	states, err := state.NewManager(combinedPrompt, cfg.ConversationDir, logger)
-	if err != nil {
-		log.Fatalf("Failed to init state manager: %v", err)
+	if hasExplicitWorkspace {
+		var err error
+		states, err = state.NewManager(combinedPrompt, cfg.ConversationDir, logger)
+		if err != nil {
+			log.Fatalf("Failed to init state manager: %v", err)
+		}
 	}
 
 	// Handle list-sessions
 	if *listSessions {
+		if states == nil {
+			log.Fatal("--list-sessions requires a workspace. Use --sandbox to specify one.")
+		}
 		keys := states.ListKeys()
 		printSessionList(keys)
 		return
 	}
 
 	// Set up tools
+	// For web UI without workspace, these will be overridden per-workspace
 	toolOpts := tooling.Options{
 		WorkspaceRoot:       absRoot,
 		ShellTimeout:        cfg.ShellTimeout(),
-		PlanPath:            filepath.Join(dataRoot, "plan.json"),
 		BinDir:              globalBinDir(),
 		ExternalData:        true,
-		ProcessDir:          filepath.Join(dataRoot, "processes"),
 		CredManager:         credManager,
 		ZAIVisionURL:        cfg.ZAIVisionURL,
 		OpenRouterVisionURL: cfg.OpenRouterVisionURL,
+	}
+	if dataRoot != "" {
+		toolOpts.PlanPath = filepath.Join(dataRoot, "plan.json")
+		toolOpts.ProcessDir = filepath.Join(dataRoot, "processes")
 	}
 	baseTools := tooling.DefaultTools(toolOpts)
 
 	// Initialize context profile
 	// Force default profile if no credentials (memory profile needs LLM client)
+	// or no workspace (memory profile needs MemoryStorePath which is workspace-dependent)
 	profileType := cfg.ContextProfile
-	if !hasCredentials {
+	if !hasCredentials || cfg.MemoryStorePath == "" {
 		profileType = "default"
 	}
 	// Determine active model for compaction threshold calculations
@@ -321,8 +352,20 @@ func main() {
 		listenPort = *port
 	}
 
-	// Find available port
-	listenAddr := findAvailablePort(listenPort)
+	// Check if port is already in use by another cando instance
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", listenPort)
+	if existingCando := checkExistingInstance(listenAddr); existingCando {
+		fmt.Printf("Cando is already running at http://%s\n", listenAddr)
+		// Don't auto-open browser in dev mode (air handles reloading)
+		if os.Getenv("DEV_MODE") == "" {
+			fmt.Println("Opening browser...")
+			openBrowser("http://" + listenAddr)
+		}
+		return
+	}
+
+	// Find available port if preferred port is taken by something else
+	listenAddr = findAvailablePort(listenPort)
 
 	// Start web UI
 	fmt.Printf("Starting Cando...\n")
@@ -355,6 +398,41 @@ func findAvailablePort(startPort int) string {
 	}
 	// Fallback to let OS pick
 	return "127.0.0.1:0"
+}
+
+// checkExistingInstance checks if cando is already running on the given address
+// by calling /api/health endpoint
+func checkExistingInstance(addr string) bool {
+	// First check if port is in use at all
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	if err != nil {
+		// Port not in use
+		return false
+	}
+	conn.Close()
+
+	// Port is in use, check if it's cando via health endpoint
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get("http://" + addr + "/api/health")
+	if err != nil {
+		// Something is on the port but not responding to HTTP
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	// Check response body for cando signature
+	var health struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+		return false
+	}
+
+	return health.Status == "ok"
 }
 
 func projectStorageRoot(workspace string) (string, error) {

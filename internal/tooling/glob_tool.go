@@ -2,7 +2,6 @@ package tooling
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -128,7 +127,7 @@ func (g *GlobTool) Call(ctx context.Context, args map[string]any) (string, error
 		"files":   paths,
 	}
 
-	data, err := json.Marshal(result)
+	data, err := jsonMarshalNoEscape(result)
 	if err != nil {
 		return "", err
 	}

@@ -362,19 +362,13 @@ func (c *Config) applyComputedPaths() {
 	if c.ConversationDir == "" {
 		c.ConversationDir = filepath.Join(GetConfigDir(), "conversations")
 	}
-	if c.MemoryStorePath == "" {
-		root := c.WorkspaceRoot
-		if root == "" {
-			root = "."
-		}
-		c.MemoryStorePath = filepath.Join(root, "memory.db")
+	// Only set workspace-dependent paths if we have a workspace root
+	// For web UI mode without explicit workspace, these are set per-workspace later
+	if c.MemoryStorePath == "" && c.WorkspaceRoot != "" {
+		c.MemoryStorePath = filepath.Join(c.WorkspaceRoot, "memory.db")
 	}
-	if c.HistoryPath == "" {
-		root := c.WorkspaceRoot
-		if root == "" {
-			root = "."
-		}
-		c.HistoryPath = filepath.Join(root, ".cando_history")
+	if c.HistoryPath == "" && c.WorkspaceRoot != "" {
+		c.HistoryPath = filepath.Join(c.WorkspaceRoot, ".cando_history")
 	}
 }
 

@@ -70,6 +70,24 @@ cando -p "fix the failing tests in src/"
 - [Build Guide](BUILD.md) - Building from source, releases
 - [Contributing](CONTRIBUTING.md) - Development setup, project structure
 
+## Beta Releases
+
+For advanced users who want to test new features before stable release.
+
+### Linux / macOS (Beta)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cutoken/cando/main/dev/install-beta.sh | bash
+```
+
+### Windows (Beta)
+
+```powershell
+irm https://raw.githubusercontent.com/cutoken/cando/main/dev/install-beta.ps1 | iex
+```
+
+Beta installs as `cando-beta` separately from stable. Both can coexist.
+
 ## License
 
 [GNU Affero General Public License v3.0](LICENSE)

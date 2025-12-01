@@ -3,7 +3,6 @@ package tooling
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -138,7 +137,7 @@ func (t *WebFetchJSONTool) Call(ctx context.Context, args map[string]any) (strin
 		"paragraphs":       paragraphs,
 	}
 
-	data, err := json.Marshal(payload)
+	data, err := jsonMarshalNoEscape(payload)
 	if err != nil {
 		return "", err
 	}

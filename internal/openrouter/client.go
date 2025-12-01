@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,7 +69,7 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 	}
 	if resp.StatusCode >= 300 {
 		logging.ErrorLog("openrouter API error: %d - %s", resp.StatusCode, string(body))
-		return respPayload, fmt.Errorf("api error: %s", string(body))
+		return respPayload, parseOpenRouterError(resp.StatusCode, body)
 	}
 
 	if err := json.Unmarshal(body, &respPayload); err != nil {
@@ -77,4 +78,94 @@ func (c *Client) Chat(ctx context.Context, reqPayload llm.ChatRequest) (llm.Chat
 	}
 	logging.DevLog("openrouter: received response with %d choices", len(respPayload.Choices))
 	return respPayload, nil
+}
+
+// parseOpenRouterError converts OpenRouter error responses to structured ProviderError
+func parseOpenRouterError(statusCode int, body []byte) *llm.ProviderError {
+	pe := &llm.ProviderError{
+		Provider: "openrouter",
+		Code:     strconv.Itoa(statusCode),
+	}
+
+	// Try to parse structured error response
+	// Format: {"error":{"code":429,"message":"...","metadata":{"headers":{...}}}}
+	var errResp struct {
+		Error struct {
+			Code     int    `json:"code"`
+			Message  string `json:"message"`
+			Metadata struct {
+				Headers struct {
+					RateLimitLimit     string `json:"X-RateLimit-Limit"`
+					RateLimitRemaining string `json:"X-RateLimit-Remaining"`
+					RateLimitReset     string `json:"X-RateLimit-Reset"`
+				} `json:"headers"`
+			} `json:"metadata"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(body, &errResp); err == nil && errResp.Error.Message != "" {
+		pe.Message = errResp.Error.Message
+		if errResp.Error.Code != 0 {
+			pe.Code = strconv.Itoa(errResp.Error.Code)
+		}
+
+		// Parse reset time from metadata (Unix timestamp in milliseconds)
+		if resetMs := errResp.Error.Metadata.Headers.RateLimitReset; resetMs != "" {
+			if ms, err := strconv.ParseInt(resetMs, 10, 64); err == nil {
+				t := time.UnixMilli(ms)
+				pe.ResetAt = &t
+				// Calculate retry duration
+				wait := time.Until(t)
+				if wait > 0 {
+					pe.RetryAfter = &wait
+				}
+			}
+		}
+	} else {
+		// Couldn't parse JSON, use raw body
+		pe.Message = strings.TrimSpace(string(body))
+	}
+
+	// Classify error type based on status code
+	switch statusCode {
+	case 402:
+		pe.Type = llm.ErrorTypeInsufficientCredit
+		pe.Retryable = false
+		if pe.Message == "" {
+			pe.Message = "Insufficient credits. Please add balance to your OpenRouter account."
+		}
+	case 429:
+		pe.Type = llm.ErrorTypeRateLimit
+		// Only auto-retry if reset is reasonably soon (< 5 minutes)
+		if pe.RetryAfter != nil && *pe.RetryAfter < 5*time.Minute {
+			pe.Retryable = true
+		} else if pe.RetryAfter != nil {
+			// Long wait (daily limit) - don't auto-retry
+			pe.Retryable = false
+		} else {
+			// No reset time known - try with backoff
+			pe.Retryable = true
+			defaultDelay := 30 * time.Second
+			pe.RetryAfter = &defaultDelay
+		}
+	case 401:
+		pe.Type = llm.ErrorTypeAuth
+		pe.Retryable = false
+		if pe.Message == "" {
+			pe.Message = "Invalid API key. Please check your OpenRouter credentials."
+		}
+	case 403:
+		pe.Type = llm.ErrorTypeModeration
+		pe.Retryable = false
+	case 502, 503:
+		pe.Type = llm.ErrorTypeProviderDown
+		pe.Retryable = true
+		defaultDelay := 10 * time.Second
+		pe.RetryAfter = &defaultDelay
+	default:
+		pe.Type = llm.ErrorTypeUnknown
+		pe.Retryable = statusCode >= 500
+	}
+
+	return pe
 }

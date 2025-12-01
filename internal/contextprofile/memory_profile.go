@@ -84,6 +84,7 @@ type memoryProfile struct {
 	compactionCallback    func(eventType string, data any) error
 	toolDefinitions       []tooling.ToolDefinition
 	toolDefsMu            sync.RWMutex
+	factsExtractor        FactsExtractor
 }
 
 func (p *memoryProfile) SetProtectedRecent(n int) {
@@ -137,6 +138,19 @@ func (p *memoryProfile) clearForceCompaction() {
 	p.forceCompaction = false
 }
 
+// SetFactsExtractor sets the facts extractor to be called before compaction.
+func (p *memoryProfile) SetFactsExtractor(fe FactsExtractor) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.factsExtractor = fe
+}
+
+func (p *memoryProfile) getFactsExtractor() FactsExtractor {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.factsExtractor
+}
+
 func newMemoryProfile(deps Dependencies) (*memoryProfile, error) {
 	if deps.Client == nil {
 		return nil, errors.New("memory profile requires llm client")
@@ -165,7 +179,7 @@ func newMemoryProfile(deps Dependencies) (*memoryProfile, error) {
 	totalLimit := deps.Config.CalculateConversationThreshold(provider, model)
 	protected := deps.Config.ContextProtectRecent
 
-	store, err := newMemoryStore(deps.Config.MemoryStorePath)
+	store, err := newMemoryStore(deps.Config.MemoryStorePath, deps.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +225,15 @@ func (p *memoryProfile) Prepare(ctx context.Context, conv *state.Conversation) (
 	}
 
 	if total > p.conversationThreshold || forced {
-		stats, err := p.compactOverflow(ctx, messages, total, forced)
+		// Extract project facts before compaction (while we have full context)
+		if fe := p.getFactsExtractor(); fe != nil {
+			if err := fe.ExtractFacts(ctx, messages); err != nil {
+				// Log but don't block compaction on facts extraction failure
+				p.logger.Printf("facts extraction failed: %v", err)
+			}
+		}
+
+		stats, err := p.compactOverflow(ctx, messages, total)
 		if err != nil {
 			return Prepared{}, err
 		}
@@ -222,10 +244,8 @@ func (p *memoryProfile) Prepare(ctx context.Context, conv *state.Conversation) (
 				mutated = true
 				if forced {
 					p.logger.Printf("FORCED context compaction: %d -> %d chars across %d messages (considered=%d)", stats.before, stats.after, stats.compacted, stats.considered)
-					fmt.Printf("(forced compaction reduced context from %d to %d chars; %d messages summarized)\n", stats.before, stats.after, stats.compacted)
 				} else {
 					p.logger.Printf("context compaction: %d -> %d chars across %d messages (considered=%d)", stats.before, stats.after, stats.compacted, stats.considered)
-					fmt.Printf("(compaction reduced context from %d to %d chars; %d messages summarized)\n", stats.before, stats.after, stats.compacted)
 				}
 			} else {
 				if forced {
@@ -339,6 +359,7 @@ func identifyTurns(messages []state.Message) []turnBoundary {
 // Returns: delta (chars saved), compacted (whether compaction happened), error
 func (p *memoryProfile) compactTurn(ctx context.Context, messages []state.Message, turn turnBoundary) (int, bool, error) {
 	if turn.startIdx < 0 || turn.endIdx >= len(messages) || turn.startIdx > turn.endIdx {
+		p.logger.Printf("compactTurn: SKIP turn[%d:%d] - invalid indices (len=%d)", turn.startIdx, turn.endIdx, len(messages))
 		return 0, false, nil
 	}
 
@@ -359,12 +380,13 @@ func (p *memoryProfile) compactTurn(ctx context.Context, messages []state.Messag
 
 	// If all messages are already placeholders, skip (already compacted)
 	if allPlaceholders && hasPlaceholder {
+		p.logger.Printf("compactTurn: SKIP turn[%d:%d] - already compacted (all placeholders)", turn.startIdx, turn.endIdx)
 		return 0, false, nil
 	}
 
 	// If some (but not all) messages are placeholders, inconsistent state - skip with warning
 	if hasPlaceholder {
-		p.logger.Printf("WARN: turn[%d:%d] contains mix of placeholders and content, skipping to avoid corruption",
+		p.logger.Printf("compactTurn: SKIP turn[%d:%d] - mixed state (some placeholders, some content), avoiding corruption",
 			turn.startIdx, turn.endIdx)
 		return 0, false, nil
 	}
@@ -396,7 +418,9 @@ func (p *memoryProfile) compactTurn(ctx context.Context, messages []state.Messag
 		}
 	}
 
-	if !hasContent || originalSize <= p.threshold {
+	// Skip if turn has no actual content to summarize
+	if !hasContent {
+		p.logger.Printf("compactTurn: SKIP turn[%d:%d] - no content to summarize", turn.startIdx, turn.endIdx)
 		return 0, false, nil
 	}
 
@@ -428,7 +452,7 @@ func (p *memoryProfile) compactTurn(ctx context.Context, messages []state.Messag
 	return delta, true, nil
 }
 
-func (p *memoryProfile) compactOverflow(ctx context.Context, messages []state.Message, total int, forced bool) (*compactionStats, error) {
+func (p *memoryProfile) compactOverflow(ctx context.Context, messages []state.Message, total int) (*compactionStats, error) {
 	startTime := time.Now()
 	stats := &compactionStats{
 		before: total,
@@ -475,12 +499,8 @@ func (p *memoryProfile) compactOverflow(ctx context.Context, messages []state.Me
 	stats.considered = len(compactableTurns)
 
 	// Compact turns from oldest to newest
+	// Once triggered, compact ALL eligible turns (protect_recent controls what's off-limits)
 	for i, turn := range compactableTurns {
-		// When forcing, skip threshold check and compact all eligible turns
-		if !forced && current <= p.conversationThreshold {
-			p.logger.Printf("compaction: stopped at turn %d/%d (current=%d <= threshold=%d)", i, len(compactableTurns), current, p.conversationThreshold)
-			break
-		}
 		p.logger.Printf("compaction: attempting turn %d/%d (startIdx=%d, endIdx=%d, current=%d)", i+1, len(compactableTurns), turn.startIdx, turn.endIdx, current)
 		_, changed, err := p.compactTurn(ctx, messages, turn)
 		if err != nil {

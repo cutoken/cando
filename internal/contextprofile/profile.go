@@ -47,6 +47,17 @@ type CompactionEventEmitter interface {
 	GetCompactionHistory() []CompactionEvent
 }
 
+// FactsExtractor is called before compaction to extract project knowledge from the conversation.
+// Implementation should handle loading existing facts, calling LLM, and saving updated facts.
+type FactsExtractor interface {
+	ExtractFacts(ctx context.Context, messages []state.Message) error
+}
+
+// FactsExtractorSetter is an optional interface for profiles that support facts extraction.
+type FactsExtractorSetter interface {
+	SetFactsExtractor(fe FactsExtractor)
+}
+
 // Dependencies bundles the resources profiles may require.
 type Dependencies struct {
 	Client   llm.Client

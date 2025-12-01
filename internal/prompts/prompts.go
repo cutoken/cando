@@ -9,6 +9,9 @@ import (
 //go:embed system_cando_compact.txt
 var baseSystemPrompt string
 
+//go:embed system_facts_extraction.txt
+var factsExtractionPrompt string
+
 var (
 	metadataMu sync.RWMutex
 	metadata   string
@@ -17,6 +20,11 @@ var (
 // Base returns the built-in Cando system prompt.
 func Base() string {
 	return strings.TrimSpace(baseSystemPrompt)
+}
+
+// FactsExtraction returns the prompt for extracting project facts.
+func FactsExtraction() string {
+	return strings.TrimSpace(factsExtractionPrompt)
 }
 
 // Combine joins the built-in prompt with an optional user-provided prompt.
