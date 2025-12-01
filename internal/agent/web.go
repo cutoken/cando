@@ -173,8 +173,8 @@ func (s *webServer) run(ctx context.Context) error {
 	mux.HandleFunc("/api/files/reveal", s.handleFilesReveal)
 	mux.HandleFunc("/api/files/delete", s.handleFilesDelete)
 	mux.HandleFunc("/api/files/rename", s.handleFilesRename)
-	mux.HandleFunc("/api/preview", s.handlePreview)           // Legacy query-based
-	mux.HandleFunc("/api/preview/", s.handlePreviewPath)      // Path-based for relative URLs
+	mux.HandleFunc("/api/preview", s.handlePreview)      // Legacy query-based
+	mux.HandleFunc("/api/preview/", s.handlePreviewPath) // Path-based for relative URLs
 	mux.HandleFunc("/api/preview-enabled", s.handlePreviewEnabled)
 
 	server := &http.Server{
@@ -3161,27 +3161,27 @@ func (s *webServer) handlePreviewPath(w http.ResponseWriter, r *http.Request) {
 	// Set Content-Type based on file extension
 	ext := strings.ToLower(filepath.Ext(fullPath))
 	mimeTypes := map[string]string{
-		".html": "text/html; charset=utf-8",
-		".htm":  "text/html; charset=utf-8",
-		".css":  "text/css; charset=utf-8",
-		".js":   "application/javascript; charset=utf-8",
-		".json": "application/json; charset=utf-8",
-		".xml":  "application/xml; charset=utf-8",
-		".svg":  "image/svg+xml",
-		".png":  "image/png",
-		".jpg":  "image/jpeg",
-		".jpeg": "image/jpeg",
-		".gif":  "image/gif",
-		".webp": "image/webp",
-		".ico":  "image/x-icon",
-		".pdf":  "application/pdf",
-		".txt":  "text/plain; charset=utf-8",
-		".md":   "text/markdown; charset=utf-8",
-		".csv":  "text/csv; charset=utf-8",
-		".woff": "font/woff",
+		".html":  "text/html; charset=utf-8",
+		".htm":   "text/html; charset=utf-8",
+		".css":   "text/css; charset=utf-8",
+		".js":    "application/javascript; charset=utf-8",
+		".json":  "application/json; charset=utf-8",
+		".xml":   "application/xml; charset=utf-8",
+		".svg":   "image/svg+xml",
+		".png":   "image/png",
+		".jpg":   "image/jpeg",
+		".jpeg":  "image/jpeg",
+		".gif":   "image/gif",
+		".webp":  "image/webp",
+		".ico":   "image/x-icon",
+		".pdf":   "application/pdf",
+		".txt":   "text/plain; charset=utf-8",
+		".md":    "text/markdown; charset=utf-8",
+		".csv":   "text/csv; charset=utf-8",
+		".woff":  "font/woff",
 		".woff2": "font/woff2",
-		".ttf":  "font/ttf",
-		".eot":  "application/vnd.ms-fontobject",
+		".ttf":   "font/ttf",
+		".eot":   "application/vnd.ms-fontobject",
 	}
 	if contentType, ok := mimeTypes[ext]; ok {
 		w.Header().Set("Content-Type", contentType)
