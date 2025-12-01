@@ -483,6 +483,12 @@ async function initUI() {
 
   // Onboarding event listeners
   ui.saveCredentialsBtn.addEventListener('click', saveCredentials);
+  ui.apiKeyInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveCredentials();
+    }
+  });
 
   const providerSelect = document.getElementById('providerSelect');
   if (providerSelect) {
@@ -2483,11 +2489,30 @@ function initSettings() {
   // API key management
   const saveZaiKey = document.getElementById('saveZaiKey');
   const saveOpenrouterKey = document.getElementById('saveOpenrouterKey');
+  const zaiApiKeyInput = document.getElementById('zaiApiKey');
+  const openrouterApiKeyInput = document.getElementById('openrouterApiKey');
   if (saveZaiKey) {
     saveZaiKey.addEventListener('click', () => saveApiKey('zai'));
   }
   if (saveOpenrouterKey) {
     saveOpenrouterKey.addEventListener('click', () => saveApiKey('openrouter'));
+  }
+  // Enter key to save API keys
+  if (zaiApiKeyInput) {
+    zaiApiKeyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveApiKey('zai');
+      }
+    });
+  }
+  if (openrouterApiKeyInput) {
+    openrouterApiKeyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveApiKey('openrouter');
+      }
+    });
   }
 
   // Auto-save on model selection change
@@ -2792,6 +2817,27 @@ let openrouterModels = [];
 let selectedOpenRouterModel = null;
 let modelSearchSetupDone = { main: false, summary: false, vision: false };
 
+// Free model preferences (fetched from GitHub)
+const FREE_MODEL_PREFS_URL = 'https://raw.githubusercontent.com/cutoken/cando/main/free-model-prefs.json';
+let freeModelPrefs = null;
+
+// Fetch free model preferences from GitHub
+async function fetchFreeModelPrefs() {
+  try {
+    const res = await fetch(FREE_MODEL_PREFS_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    freeModelPrefs = await res.json();
+    console.log('Free model preferences loaded:', freeModelPrefs);
+  } catch (err) {
+    console.warn('Failed to fetch free model preferences, using fallback:', err.message);
+    // Fallback defaults (same as free-model-prefs.json)
+    freeModelPrefs = {
+      text: ['deepseek/deepseek-chat-v3-0324:free', 'qwen/qwen3-coder:free', 'z-ai/glm-4.5-air:free', 'x-ai/grok-4.1-fast:free'],
+      vision: ['qwen/qwen2.5-vl-32b-instruct:free', 'x-ai/grok-4.1-fast:free', 'nvidia/nemotron-nano-12b-v2-vl:free']
+    };
+  }
+}
+
 // Consolidated model configuration - single source of truth
 const MODEL_CONFIG = {
   main: {
@@ -2830,7 +2876,7 @@ function getModelElements(modelType) {
 function displayModelInfo(model, infoElement) {
   if (!model || !infoElement) return;
 
-  const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
+  const isFree = model.id && model.id.endsWith(':free');
 
   if (isFree) {
     // Free is already shown in model name, no need to repeat
@@ -2945,9 +2991,19 @@ function filterAndShowModelDropdown(modelType, query) {
 
   const lowerQuery = query.toLowerCase();
 
+  // Check if free mode is enabled
+  const freeModeToggle = document.getElementById('openrouterFreeMode');
+  const freeModeEnabled = freeModeToggle && freeModeToggle.checked;
+
   let filtered = openrouterModels.filter(model => {
     // Apply capability filter if defined (e.g., vision models)
     if (cfg.filter && !cfg.filter(model)) return false;
+
+    // Free mode filter - only show free models when enabled
+    if (freeModeEnabled) {
+      const isFree = model.id && model.id.endsWith(':free');
+      if (!isFree) return false;
+    }
 
     // Text search filter
     const matchesSearch = model.name.toLowerCase().includes(lowerQuery) ||
@@ -2969,7 +3025,7 @@ function filterAndShowModelDropdown(modelType, query) {
       const item = document.createElement('div');
       item.className = 'model-dropdown-item';
 
-      const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
+      const isFree = model.id && model.id.endsWith(':free');
 
       item.innerHTML = `
         <div class="model-dropdown-name">${model.name}${isFree ? ' <span style="color: #10b981; font-size: 0.75rem;">FREE</span>' : ''}</div>
@@ -3024,9 +3080,14 @@ function setupModelSearchGeneric(modelType) {
 // Load OpenRouter models and setup searchable dropdowns
 async function loadOpenRouterModels() {
   try {
-    const res = await fetch('/openrouter-models.json');
-    if (!res.ok) throw new Error('Failed to load models');
-    openrouterModels = await res.json();
+    // Fetch models and preferences in parallel
+    const [modelsRes] = await Promise.all([
+      fetch('/openrouter-models.json'),
+      fetchFreeModelPrefs()
+    ]);
+
+    if (!modelsRes.ok) throw new Error('Failed to load models');
+    openrouterModels = await modelsRes.json();
 
     // Setup all model type searches
     setupModelSearchGeneric('main');
@@ -3041,22 +3102,44 @@ async function loadOpenRouterModels() {
   }
 }
 
-// Find the top free model matching a filter (models are already sorted by popularity)
-function findTopFreeModel(filter = null) {
-  return openrouterModels.find(model => {
-    const isFree = model.pricing && model.pricing.prompt === "0" && model.pricing.completion === "0";
-    if (!isFree) return false;
+// Find the best free model using preferences, falling back to any available free model
+function findTopFreeModel(type = 'text') {
+  const prefs = freeModelPrefs?.[type] || [];
+
+  // First try preferred models in order
+  for (const prefId of prefs) {
+    const model = openrouterModels.find(m => {
+      return m.id === prefId && m.id.endsWith(':free');
+    });
+    if (model) {
+      console.log(`Free mode: using preferred ${type} model: ${model.id}`);
+      return model;
+    }
+  }
+
+  // Fallback: find any free model matching the type
+  const filter = type === 'vision'
+    ? (m => m.capabilities && m.capabilities.includes('image'))
+    : null;
+
+  const fallback = openrouterModels.find(model => {
+    if (!model.id || !model.id.endsWith(':free')) return false;
     if (filter && !filter(model)) return false;
     return true;
   });
+
+  if (fallback) {
+    console.log(`Free mode: using fallback ${type} model: ${fallback.id}`);
+  }
+  return fallback;
 }
 
 // Apply Free Mode - auto-select top free models for all categories
 function applyFreeMode() {
   // Find top free text model (for main and summary)
-  const topFreeText = findTopFreeModel();
+  const topFreeText = findTopFreeModel('text');
   // Find top free vision model
-  const topFreeVision = findTopFreeModel(model => model.capabilities && model.capabilities.includes('image'));
+  const topFreeVision = findTopFreeModel('vision');
 
   if (topFreeText) {
     // Select for main model
@@ -3385,8 +3468,7 @@ async function loadApiKeyStatus() {
       // Find the paid version (non-free) of the model
       let model = openrouterModels.find(m =>
         m.id === modelId &&
-        m.pricing &&
-        !(m.pricing.prompt === "0" && m.pricing.completion === "0")
+        !m.id.endsWith(':free')
       );
 
       // Fall back to any version if paid not found
