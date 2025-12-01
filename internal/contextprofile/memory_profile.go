@@ -695,9 +695,9 @@ func (p *memoryProfile) MemorySummary(limit int) (MemorySummary, error) {
 }
 
 func (p *memoryProfile) ReloadConfig(cfg config.Config) error {
-	if strings.TrimSpace(cfg.MemoryStorePath) != "" && cfg.MemoryStorePath != p.store.Path() {
-		return fmt.Errorf("changing memory_store_path requires restart")
-	}
+	// Note: We ignore cfg.MemoryStorePath - the store path is set at profile creation
+	// and cannot be changed at runtime. The passed config may have a different path
+	// (e.g., global default vs workspace-specific) which is expected and harmless.
 	if cfg.ContextMessagePercent <= 0 || cfg.ContextTotalPercent <= 0 {
 		return fmt.Errorf("invalid compaction thresholds")
 	}
